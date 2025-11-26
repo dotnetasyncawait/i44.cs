@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="I44/I44.csproj" />
+  <Project Path="Lib/Lib.csproj" />
+</Solution>
