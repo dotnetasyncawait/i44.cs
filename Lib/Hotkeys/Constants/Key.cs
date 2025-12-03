@@ -6,6 +6,9 @@ public static class Key
 	public const ushort B = 0x0030;
 	public const ushort C = 0x002E;
 	public const ushort D = 0x0020;
+	public const ushort E = 0x0012;
+	public const ushort F = 0x0021;
+	public const ushort G = 0x0022;
 	
 	public const ushort L = 0x0017;
 	

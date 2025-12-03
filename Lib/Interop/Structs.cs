@@ -11,23 +11,23 @@ internal static class Structs
 	[StructLayout(LayoutKind.Sequential)]
 	internal struct KBDLLHOOKSTRUCT
 	{
-		internal uint VkCode;
-		internal uint ScanCode;
-		internal uint Flags;
-		internal uint Time;
-		internal UIntPtr ExtraInfo;
+		internal uint  vkCode;
+		internal uint  scanCode;
+		internal uint  flags;
+		internal uint  time;
+		internal nuint dwExtraInfo;
 	}
 	
 	[StructLayout(LayoutKind.Sequential)]
 	internal struct MSG
 	{
-		internal IntPtr  Hwnd;
-		internal uint    Message;
-		internal UIntPtr WParam;
-		internal IntPtr  LParam;
-		internal uint    Time;
-		internal POINT   Pt;
-		internal uint    LPrivate;
+		internal nint  hwnd;
+		internal uint  message;
+		internal nuint wParam;
+		internal nint  lParam;
+		internal uint  time;
+		internal POINT pt;
+		internal uint  lPrivate;
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
@@ -42,7 +42,7 @@ internal static class Structs
 			=> new()
 			{
 				type = Constants.INPUT_KEYBOARD,
-				u = new DUMMYUNION { ki = new KEYBDINPUT { Vk = vk, Scan = sc, Flags = flags, Time = time, ExtraInfo = extraInfo } }
+				u = new DUMMYUNION { ki = new KEYBDINPUT { mVk = vk, wScan = sc, dwFlags = flags, time = time, dwExtraInfo = extraInfo } }
 			};
 	}
 	
@@ -57,30 +57,30 @@ internal static class Structs
 	[StructLayout(LayoutKind.Sequential)]
 	internal struct MOUSEINPUT
 	{
-		internal int X;
-		internal int Y;
-		internal uint MouseData;
-		internal uint Flags;
-		internal uint Time;
-		internal UIntPtr ExtraInfo;
+		internal int   dx;
+		internal int   dy;
+		internal uint  mouseData;
+		internal uint  dwFlags;
+		internal uint  time;
+		internal nuint dwExtraInfo;
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
 	internal struct KEYBDINPUT
 	{
-		internal ushort Vk;
-		internal ushort Scan;
-		internal uint Flags;
-		internal uint Time;
-		internal UIntPtr ExtraInfo;
+		internal ushort mVk;
+		internal ushort wScan;
+		internal uint   dwFlags;
+		internal uint   time;
+		internal nuint  dwExtraInfo;
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
 	internal struct HARDWAREINPUT
 	{
-		internal uint Msg;
-		internal ushort ParamL;
-		internal ushort ParamH;
+		internal uint   uMsg;
+		internal ushort wParamL;
+		internal ushort wParamH;
 	}
 	
 	#endregion
@@ -90,8 +90,8 @@ internal static class Structs
 	[StructLayout(LayoutKind.Sequential)]
 	internal struct POINT
 	{
-		internal int X;
-		internal int Y;
+		internal int x;
+		internal int y;
 	}
 
 	#endregion
