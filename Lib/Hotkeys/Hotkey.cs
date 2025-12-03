@@ -15,7 +15,6 @@ using static Lib.Interop.Structs;
 namespace Lib.Hotkeys;
 
 // ReSharper disable InconsistentNaming
-// ReSharper disable InvertIf
 
 internal readonly record struct HotkeyItem(Entry Entry, Remap Remap);
 
@@ -25,6 +24,13 @@ public static class Hotkey // TODO: rename
 	
 	private static readonly Thread _hotkeyThread = new(StartHook);
 	private static uint _hotkeyThreadId;
+	
+	private static byte _vMods;
+	
+	private static readonly HashSet<ushort> _suppressedKeys = [];
+	private static HotkeyItem? _currHotkey;
+	
+	private static byte _suppressedEntryMods; // QMK key-overrides case
 	
 	public static void Run()
 	{
@@ -108,17 +114,10 @@ public static class Hotkey // TODO: rename
 		}
 	}
 	
-	private static byte _vMods;
-	
-	private static readonly HashSet<ushort> _suppressedKeys = [];
-	private static HotkeyItem? _currHotkey;
-	
-	private static byte _suppressedEntryMods; // QMK key-overrides case
-	
 	[UnmanagedCallersOnly]
 	// The reason for using 'raw pointer' for 'lParam' instead of `ref' is the:
 	// error CS8977: Cannot use 'ref', 'in', or 'out' in the signature of a method attributed with 'UnmanagedCallersOnly'.
-	internal static unsafe IntPtr LowLevelKeyboardProc(int code, UIntPtr wParam, KBDLLHOOKSTRUCT* lParam)
+	internal static unsafe nint LowLevelKeyboardProc(int code, nuint wParam, KBDLLHOOKSTRUCT* lParam)
 	{
 		#region TODO
 		if (code < 0) return CallNextHookEx(0, code, wParam, lParam);
@@ -286,14 +285,14 @@ public static class Hotkey // TODO: rename
 	{
 		if (modBits != 0)
 		{
-			if ((modBits & Mod.LCtrl)  != 0) _suppressedKeys.Add(Key.LCtrl);
-			if ((modBits & Mod.LShift) != 0) _suppressedKeys.Add(Key.LShift);
-			if ((modBits & Mod.LAlt)   != 0) _suppressedKeys.Add(Key.LAlt);
-			if ((modBits & Mod.LWin)   != 0) _suppressedKeys.Add(Key.LWin);
-			if ((modBits & Mod.RCtrl)  != 0) _suppressedKeys.Add(Key.RCtrl);
-			if ((modBits & Mod.RShift) != 0) _suppressedKeys.Add(Key.RShift);
-			if ((modBits & Mod.RAlt)   != 0) _suppressedKeys.Add(Key.RAlt);
-			if ((modBits & Mod.RWin)   != 0) _suppressedKeys.Add(Key.RWin);
+			if ((modBits & Mod.LC) != 0) _suppressedKeys.Add(Key.LCtrl);
+			if ((modBits & Mod.LS) != 0) _suppressedKeys.Add(Key.LShift);
+			if ((modBits & Mod.LA) != 0) _suppressedKeys.Add(Key.LAlt);
+			if ((modBits & Mod.LW) != 0) _suppressedKeys.Add(Key.LWin);
+			if ((modBits & Mod.RC) != 0) _suppressedKeys.Add(Key.RCtrl);
+			if ((modBits & Mod.RS) != 0) _suppressedKeys.Add(Key.RShift);
+			if ((modBits & Mod.RA) != 0) _suppressedKeys.Add(Key.RAlt);
+			if ((modBits & Mod.RW) != 0) _suppressedKeys.Add(Key.RWin);
 		}
 		
 		_suppressedKeys.Add(key);

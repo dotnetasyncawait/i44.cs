@@ -24,14 +24,14 @@ internal ref struct ItemsPacker(Span<InputItem> items)
 		if (modBits == 0) return this;
 		var flags = (ushort)(KEYEVENTF_SCANCODE | (state ? 0 : KEYEVENTF_KEYUP));
 		
-		if ((modBits & Mod.LCtrl)  != 0) _items[_index++] = new InputItem(Key.LCtrl,  flags);
-		if ((modBits & Mod.LShift) != 0) _items[_index++] = new InputItem(Key.LShift, flags);
-		if ((modBits & Mod.LAlt)   != 0) _items[_index++] = new InputItem(Key.LAlt,   flags);
-		if ((modBits & Mod.LWin)   != 0) _items[_index++] = new InputItem(Key.LWin,   (ushort)(flags | KEYEVENTF_EXTENDEDKEY));
-		if ((modBits & Mod.RCtrl)  != 0) _items[_index++] = new InputItem(Key.RCtrl,  (ushort)(flags | KEYEVENTF_EXTENDEDKEY));
-		if ((modBits & Mod.RShift) != 0) _items[_index++] = new InputItem(Key.RShift, flags);
-		if ((modBits & Mod.RAlt)   != 0) _items[_index++] = new InputItem(Key.RAlt,   (ushort)(flags | KEYEVENTF_EXTENDEDKEY));
-		if ((modBits & Mod.RWin)   != 0) _items[_index++] = new InputItem(Key.RWin,   (ushort)(flags | KEYEVENTF_EXTENDEDKEY));
+		if ((modBits & Mod.LC) != 0) _items[_index++] = new InputItem(Key.LCtrl,  flags);
+		if ((modBits & Mod.LS) != 0) _items[_index++] = new InputItem(Key.LShift, flags);
+		if ((modBits & Mod.LA) != 0) _items[_index++] = new InputItem(Key.LAlt,   flags);
+		if ((modBits & Mod.LW) != 0) _items[_index++] = new InputItem(Key.LWin,   (ushort)(flags | KEYEVENTF_EXTENDEDKEY));
+		if ((modBits & Mod.RC) != 0) _items[_index++] = new InputItem(Key.RCtrl,  (ushort)(flags | KEYEVENTF_EXTENDEDKEY));
+		if ((modBits & Mod.RS) != 0) _items[_index++] = new InputItem(Key.RShift, flags);
+		if ((modBits & Mod.RA) != 0) _items[_index++] = new InputItem(Key.RAlt,   (ushort)(flags | KEYEVENTF_EXTENDEDKEY));
+		if ((modBits & Mod.RW) != 0) _items[_index++] = new InputItem(Key.RWin,   (ushort)(flags | KEYEVENTF_EXTENDEDKEY));
 		
 		return this;
 	}
