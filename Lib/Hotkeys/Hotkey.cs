@@ -119,13 +119,12 @@ public static class Hotkey // TODO: rename
 	// error CS8977: Cannot use 'ref', 'in', or 'out' in the signature of a method attributed with 'UnmanagedCallersOnly'.
 	internal static unsafe nint LowLevelKeyboardProc(int code, nuint wParam, KBDLLHOOKSTRUCT* lParam)
 	{
-		#region TODO
-		if (code < 0) return CallNextHookEx(0, code, wParam, lParam);
+		if (code < 0) goto CallNext;
 		
 		var hookStruct = *lParam;
 		
 		var extra = hookStruct.dwExtraInfo;
-		if (extra == MAGNUM_CALLNEXT) return CallNextHookEx(0, code, wParam, lParam);
+		if (extra == MAGNUM_CALLNEXT) goto CallNext;
 		
 		var flags = hookStruct.flags;
 		var sc = (ushort)hookStruct.scanCode;
@@ -151,134 +150,147 @@ public static class Hotkey // TODO: rename
 			sc |= 0xE000;
 		}
 		
-		bool isMod = IsMod(sc, out var modBit);
 		bool isPressed = (flags & LLKHF_UP) == 0;
+		bool isMod = IsMod(sc, out byte modBit);
 		
 		Console.WriteLine($"{(isPressed ? "Down" : "Up")}: 0x{sc:X} ({_vMods:b8}); flags: {flags:b8}; extra: 0x{extra:X}");
 		
-		#endregion
-		
 		if (isPressed)
 		{
-			if (_suppressedKeys.Contains(sc))
-			{
-				Console.WriteLine($"Suppress key down: 0x{sc:X}");
-				return NonZero;
-			}
-			
-			if (_currHotkey is {} h)
-			{
-				if (h.Entry.Key == sc)
-				{
-					var remapKey = h.Remap.Key;
-					Console.WriteLine($"Repeat: {h.Entry.Mods:b8}_0x{sc:X} -> {h.Remap.Mods:b8}_0x{remapKey:X} ({_vMods:b8})");
-					
-					if (sc == remapKey) goto CallNext;
-					SendKeyDown(remapKey);
-					return NonZero;
-				}
-				
-				if (isMod && (_suppressedEntryMods & modBit) != 0)
-				{
-					Console.WriteLine($"Suppress entry mod: 0x{sc:X}");
-					return NonZero;
-				}
-				
-				// TODO: implement compositional hotkeys (for mod-to-mod)?
-				goto CallNext;
-			}
-			
-			var entry = new Entry(_vMods, sc);
-			
-			if (!_hotkeys.TryGetValue(entry, out var handler)) goto CallNext;
-			
-			if (handler.IsAction) throw new NotImplementedException();
-			
-			if (handler.Remap() is not {} remap) goto CallNext;
-			
-			var remapKeyModBit = ModBit(remap.Key);
-			
-			var modsToRelease = (byte)(entry.Mods & ~(remap.Mods | remapKeyModBit));
-			var modsToPress   = (byte)(remap.Mods & ~entry.Mods);
-			
-			_vMods = (byte)((_vMods | modsToPress | remapKeyModBit) & ~modsToRelease);
-			
-			_currHotkey = new HotkeyItem(entry, remap);
-			_suppressedEntryMods = entry.Mods;
-			
-			Console.WriteLine($"Remap: {entry.Mods:b8}_0x{sc:X} -> {remap.Mods:b8}_0x{remap.Key:X} ({_vMods:b8})");
-			
-			var ip = new ItemsPacker(stackalloc InputItem[9])
-				.ModsUp(modsToRelease)
-				.ModsDown(modsToPress)
-				.KeyDown(remap.Key);
-			
-			SendKeys(ip.GetItems());
-			return NonZero;
+			if (OnKeyboardKeyDown(sc, isMod, modBit)) return NonZero;
 		}
 		else
 		{
-			if (_suppressedKeys.Remove(sc))
-			{
-				Console.WriteLine($"Suppress key up: 0x{sc:X}");
-				return NonZero;
-			}
-			
-			if (_currHotkey is not {} h) goto CallNext;
-			
+			if (OnKeyboardKeyUp(sc, isMod, modBit)) return NonZero;
+		}
+		
+		Console.WriteLine($"Pass next: 0x{sc:X} ({_vMods:b8})");
+		
+		CallNext:
+		return CallNextHookEx(0, code, wParam, lParam);
+	}
+	
+	private static bool OnKeyboardKeyDown(ushort sc, bool isMod, byte modBit)
+	{
+		if (_suppressedKeys.Contains(sc))
+		{
+			Console.WriteLine($"Suppress key down: 0x{sc:X}");
+			return true;
+		}
+		
+		if (_currHotkey is {} h)
+		{
 			if (h.Entry.Key == sc)
 			{
-				// Trigger key is released — revert the hotkey.
-				// Note: If one or all of the 'Remap.Mods' were already released, they will not be considered and
-				// will be 'released' anyway. Can that be undesired?
+				var remapKey = h.Remap.Key;
+				Console.WriteLine($"Repeat: {h.Entry.Mods:b8}_0x{sc:X} -> {h.Remap.Mods:b8}_0x{remapKey:X} ({_vMods:b8})");
 				
-				var modsToRelease = (byte)(h.Remap.Mods & ~h.Entry.Mods);
-				var modsToRestore = (byte)(h.Entry.Mods & ~h.Remap.Mods);
-				
-				_vMods = (byte)((_vMods | modsToRestore) & ~(modsToRelease | ModBit(h.Remap.Key)));
-				
-				_currHotkey = null;
-				_suppressedEntryMods = 0;
-				
-				var ip = new ItemsPacker(stackalloc InputItem[9])
-					.KeyUp(h.Remap.Key)
-					.ModsUp(modsToRelease)
-					.ModsDown(modsToRestore);
-				
-				SendKeys(ip.GetItems());
-				return NonZero;
+				if (sc == remapKey) goto CallNext;
+				SendKeyDown(remapKey);
+				return true;
 			}
 			
-			if (isMod && (h.Entry.Mods & modBit) != 0)
+			if (isMod && (_suppressedEntryMods & modBit) != 0)
 			{
-				// One of the 'Entry.Mods' is released — remove all the keys and ignore the entries.
-				
-				_vMods &= (byte)~(h.Remap.Mods | ModBit(h.Remap.Key));
-				
-				_currHotkey = null;
-				_suppressedEntryMods = 0;
-				
-				AddKeysToIgnoreList((byte)(h.Entry.Mods & ~modBit), h.Entry.Key); // exclude the released bit
-				
-				var ip = new ItemsPacker(stackalloc InputItem[9])
-					.KeyUp(h.Remap.Key)
-					.ModsUp(h.Remap.Mods);
-				
-				SendKeys(ip.GetItems());
-				return NonZero;
+				Console.WriteLine($"Suppress entry mod: 0x{sc:X}");
+				return true;
 			}
 			
-			// fall through to CallNext
+			// TODO: implement compositional hotkeys (for mod-to-mod)?
+			goto CallNext;
+		}
+		
+		var entry = new Entry(_vMods, sc);
+		
+		if (!_hotkeys.TryGetValue(entry, out var handler)) goto CallNext;
+		
+		if (handler.IsAction)
+		{
+			throw new NotImplementedException();
+		}
+		
+		if (handler.Remap() is not {} remap) goto CallNext;
+		
+		var remapKeyModBit = ModBit(remap.Key);
+		
+		var modsToRelease = (byte)(entry.Mods & ~(remap.Mods | remapKeyModBit));
+		var modsToPress   = (byte)(remap.Mods & ~entry.Mods);
+		
+		_vMods = (byte)((_vMods | modsToPress | remapKeyModBit) & ~modsToRelease);
+		
+		_currHotkey = new HotkeyItem(entry, remap);
+		_suppressedEntryMods = entry.Mods;
+		
+		Console.WriteLine($"Remap: {entry.Mods:b8}_0x{sc:X} -> {remap.Mods:b8}_0x{remap.Key:X} ({_vMods:b8})");
+		
+		var ip = new ItemsPacker(stackalloc InputItem[9])
+			.ModsUp(modsToRelease)
+			.ModsDown(modsToPress)
+			.KeyDown(remap.Key);
+		
+		SendKeys(ip.GetItems());
+		return true;
+		
+		CallNext:
+		if (isMod) _vMods |= modBit;
+		return false;
+	}
+
+	private static bool OnKeyboardKeyUp(ushort sc, bool isMod, byte modBit)
+	{
+		if (_suppressedKeys.Remove(sc))
+		{
+			Console.WriteLine($"Suppress key up: 0x{sc:X}");
+			return true;
+		}
+		
+		if (_currHotkey is not {} h) goto CallNext;
+		
+		if (h.Entry.Key == sc)
+		{
+			// Trigger key is released — revert the hotkey.
+			// Note: If one or all of the 'Remap.Mods' were already released, they will not be considered and
+			// will be 'released' anyway. Can that be undesired?
+			
+			var modsToRelease = (byte)(h.Remap.Mods & ~h.Entry.Mods);
+			var modsToRestore = (byte)(h.Entry.Mods & ~h.Remap.Mods);
+			
+			_vMods = (byte)((_vMods | modsToRestore) & ~(modsToRelease | ModBit(h.Remap.Key)));
+			
+			_currHotkey = null;
+			_suppressedEntryMods = 0;
+			
+			var ip = new ItemsPacker(stackalloc InputItem[9])
+				.KeyUp(h.Remap.Key)
+				.ModsUp(modsToRelease)
+				.ModsDown(modsToRestore);
+			
+			SendKeys(ip.GetItems());
+			return true;
+		}
+		
+		if (isMod && (h.Entry.Mods & modBit) != 0)
+		{
+			// One of the 'Entry.Mods' is released — remove all the keys and ignore the entries.
+			
+			_vMods &= (byte)~(h.Remap.Mods | ModBit(h.Remap.Key));
+			
+			_currHotkey = null;
+			_suppressedEntryMods = 0;
+			
+			AddKeysToIgnoreList((byte)(h.Entry.Mods & ~modBit), h.Entry.Key); // exclude the released bit
+			
+			var ip = new ItemsPacker(stackalloc InputItem[9])
+				.KeyUp(h.Remap.Key)
+				.ModsUp(h.Remap.Mods);
+			
+			SendKeys(ip.GetItems());
+			return true;
 		}
 		
 		CallNext:
-		if (isMod)
-		{
-			if (isPressed) _vMods |= modBit;
-			else _vMods &= (byte)~modBit;
-		}
-		Console.WriteLine($"Pass next: 0x{sc:X} ({_vMods:b8})");
-		return CallNextHookEx(0, code, wParam, lParam);
+		if (isMod) _vMods &= (byte)~modBit;
+		return false;
 	}
 	
 	private static void AddKeysToIgnoreList(byte modBits, ushort key)
