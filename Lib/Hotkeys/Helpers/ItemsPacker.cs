@@ -11,18 +11,18 @@ internal ref struct ItemsPacker(Span<InputItem> items)
 	private readonly Span<InputItem> _items = items;
 	private int _index = 0;
 	
-	internal ItemsPacker ModsDown(byte modBits) => PackModBits(modBits, true);
-	internal ItemsPacker ModsUp(byte modBits) => PackModBits(modBits, false);
+	internal ItemsPacker ModsDown(byte modBits) => PackMods(modBits, true);
+	internal ItemsPacker ModsUp(byte modBits)   => PackMods(modBits, false);
 	
-	internal ItemsPacker KeyDown(ushort key) => PackKey(key, true);
-	internal ItemsPacker KeyUp(ushort key) => PackKey(key, false);
+	internal ItemsPacker KeyDown(ushort sc) => PackKey(sc, true);
+	internal ItemsPacker KeyUp(ushort sc)   => PackKey(sc, false);
 	
 	internal Span<InputItem> GetItems() => _items[.._index];
 	
-	private ItemsPacker PackModBits(byte modBits, bool state)
+	internal ItemsPacker PackMods(byte modBits, bool down)
 	{
 		if (modBits == 0) return this;
-		var flags = (ushort)(KEYEVENTF_SCANCODE | (state ? 0 : KEYEVENTF_KEYUP));
+		var flags = (ushort)(KEYEVENTF_SCANCODE | (down ? 0 : KEYEVENTF_KEYUP));
 		
 		if ((modBits & Mod.LC) != 0) _items[_index++] = new InputItem(Key.LCtrl,  flags);
 		if ((modBits & Mod.LS) != 0) _items[_index++] = new InputItem(Key.LShift, flags);
@@ -36,10 +36,10 @@ internal ref struct ItemsPacker(Span<InputItem> items)
 		return this;
 	}
 	
-	private ItemsPacker PackKey(ushort key, bool state)
+	private ItemsPacker PackKey(ushort sc, bool state)
 	{
-		var flags = KEYEVENTF_SCANCODE | (key >> 8 != 0 ? KEYEVENTF_EXTENDEDKEY : 0) | (state ? 0 : KEYEVENTF_KEYUP);
-		_items[_index++] = new InputItem(key, (ushort)flags);
+		var flags = KEYEVENTF_SCANCODE | (sc >> 8 != 0 ? KEYEVENTF_EXTENDEDKEY : 0) | (state ? 0 : KEYEVENTF_KEYUP);
+		_items[_index++] = new InputItem(sc, (ushort)flags);
 		return this;
 	}
 }

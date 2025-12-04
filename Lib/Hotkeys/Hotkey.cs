@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -17,6 +18,7 @@ namespace Lib.Hotkeys;
 // ReSharper disable InconsistentNaming
 
 internal readonly record struct HotkeyItem(Entry Entry, Remap Remap);
+internal readonly record struct UnicodeItem(Entry Entry, INPUT[] Inputs);
 
 public static class Hotkey // TODO: rename
 {
@@ -28,7 +30,9 @@ public static class Hotkey // TODO: rename
 	private static byte _vMods;
 	
 	private static readonly HashSet<ushort> _suppressedKeys = [];
-	private static HotkeyItem? _currHotkey;
+	
+	private static HotkeyItem? _currHotkey; // TODO: rename to RemapItem? _currRemap
+	private static UnicodeItem? _currUnicode;
 	
 	private static byte _suppressedEntryMods; // QMK key-overrides case
 	
@@ -47,7 +51,6 @@ public static class Hotkey // TODO: rename
 		{
 			throw new Exception(Marshal.GetLastPInvokeErrorMessage());
 		}
-		_hotkeyThread.Join();
 	}
 	
 	public static void Wait() => _hotkeyThread.Join();
@@ -92,6 +95,14 @@ public static class Hotkey // TODO: rename
 					throw new NotImplementedException("Invalid parameters");
 				}
 				handler = new HotkeyHandler(method.CreateDelegate<Func<Remap?>>());
+			}
+			else if (method.ReturnType == typeof(string)) // unicode
+			{
+				if (method.GetParameters().Length != 0)
+				{
+					throw new NotImplementedException("Invalid parameters");
+				}
+				handler = new HotkeyHandler(method.CreateDelegate<Func<string>>());
 			}
 			// else if (method.ReturnType == typeof(void)) // action
 			// {
@@ -180,6 +191,8 @@ public static class Hotkey // TODO: rename
 		
 		if (_currHotkey is {} h)
 		{
+			Debug.Assert(_currUnicode is null);
+			
 			if (h.Entry.Key == sc)
 			{
 				var remapKey = h.Remap.Key;
@@ -200,6 +213,24 @@ public static class Hotkey // TODO: rename
 			goto CallNext;
 		}
 		
+		if (_currUnicode is {} u)
+		{
+			if (u.Entry.Key == sc)
+			{
+				Console.WriteLine("Repeat Unicode");
+				SendInput((uint)u.Inputs.Length, ref MemoryMarshal.GetReference(u.Inputs), INPUT.Size);
+				return true;
+			}
+			
+			if (isMod && (_suppressedEntryMods & modBit) != 0)
+			{
+				Console.WriteLine($"Suppress entry mod: 0x{sc:X}");
+				return true;
+			}
+			
+			goto CallNext;
+		}
+		
 		var entry = new Entry(_vMods, sc);
 		
 		if (!_hotkeys.TryGetValue(entry, out var handler)) goto CallNext;
@@ -209,6 +240,15 @@ public static class Hotkey // TODO: rename
 			throw new NotImplementedException();
 		}
 		
+		if (handler.IsUnicode)
+		{
+			string str = handler.Unicode();
+			if (string.IsNullOrEmpty(str)) goto CallNext;
+			return HandleUnicodeDown(str, entry);
+		}
+		
+		Debug.Assert(handler.IsRemap);
+		
 		if (handler.Remap() is not {} remap) goto CallNext;
 		
 		var remapKeyModBit = ModBit(remap.Key);
@@ -216,7 +256,7 @@ public static class Hotkey // TODO: rename
 		var modsToRelease = (byte)(entry.Mods & ~(remap.Mods | remapKeyModBit));
 		var modsToPress   = (byte)(remap.Mods & ~entry.Mods);
 		
-		_vMods = (byte)((_vMods | modsToPress | remapKeyModBit) & ~modsToRelease);
+		_vMods = (byte)(remap.Mods | remapKeyModBit);
 		
 		_currHotkey = new HotkeyItem(entry, remap);
 		_suppressedEntryMods = entry.Mods;
@@ -241,6 +281,33 @@ public static class Hotkey // TODO: rename
 		if (_suppressedKeys.Remove(sc))
 		{
 			Console.WriteLine($"Suppress key up: 0x{sc:X}");
+			return true;
+		}
+		
+		if (_currUnicode is {} u)
+		{
+			Debug.Assert(_currHotkey is null);
+			byte modsToRestore;
+			
+			if (u.Entry.Key == sc)
+			{
+				modsToRestore = u.Entry.Mods;
+			}
+			else if (isMod && (u.Entry.Mods & modBit) != 0)
+			{
+				modsToRestore = (byte)(u.Entry.Mods & ~modBit);
+				_suppressedKeys.Add(u.Entry.Key);
+			}
+			else goto CallNext;
+				
+			_vMods |= modsToRestore;
+			_currUnicode = null;
+			_suppressedEntryMods = 0;
+				
+			if (modsToRestore != 0)
+			{
+				UpdateModsMaskedUnicode(modsToRestore, true);
+			}
 			return true;
 		}
 		
@@ -291,6 +358,57 @@ public static class Hotkey // TODO: rename
 		CallNext:
 		if (isMod) _vMods &= (byte)~modBit;
 		return false;
+	}
+	
+	private static bool HandleUnicodeDown(string str, Entry entry)
+	{
+		var inputs = new INPUT[str.Length*2];
+		
+		for (int i = 0, j = 0; i < str.Length; i++)
+		{
+			var high = (ushort)str[i];
+			if (high < 0xD800)
+			{
+				inputs[j++] = INPUT.KeybdInput(high, KEYEVENTF_UNICODE, MAGNUM_CALLNEXT);
+				inputs[j++] = INPUT.KeybdInput(high, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, MAGNUM_CALLNEXT);
+				continue;
+			}
+			
+			var low = (ushort)str[++i];
+			inputs[j++] = INPUT.KeybdInput(high, KEYEVENTF_UNICODE, MAGNUM_CALLNEXT);
+			inputs[j++] = INPUT.KeybdInput(low,  KEYEVENTF_UNICODE, MAGNUM_CALLNEXT);
+			inputs[j++] = INPUT.KeybdInput(high, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, MAGNUM_CALLNEXT);
+			inputs[j++] = INPUT.KeybdInput(low,  KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, MAGNUM_CALLNEXT);
+		}
+		
+		var modsToRelease = entry.Mods;
+		_vMods = 0;
+		_currUnicode = new UnicodeItem(entry, inputs);
+		_suppressedEntryMods = modsToRelease;
+		
+		Console.WriteLine($"Unicode: 0x{entry.Key:X}");
+		
+		if (modsToRelease != 0)
+		{
+			UpdateModsMaskedUnicode(modsToRelease, false);
+		}
+		
+		SendInput((uint)inputs.Length, ref MemoryMarshal.GetReference(inputs), INPUT.Size);
+		return true;
+	}
+	
+	private static void UpdateModsMaskedUnicode(byte mods, bool down)
+	{
+		const byte menuMods = Mod.LA | Mod.RA | Mod.LW | Mod.RW;
+		var toMask = (mods & menuMods) != 0 && (mods & (Mod.LC | Mod.RC)) == 0;
+		
+		var ip = new ItemsPacker(stackalloc InputItem[8]);
+		
+		if (toMask) ip.KeyDown(MenuMaskKey);
+		ip.PackMods(mods, down);	
+		if (toMask) ip.KeyUp(MenuMaskKey);
+		
+		SendKeys(ip.GetItems());
 	}
 	
 	private static void AddKeysToIgnoreList(byte modBits, ushort key)

@@ -8,4 +8,5 @@ internal static class Misc
 	
 	internal const nuint MAGNUM_CALLNEXT = 0xAABBCCDD;
 	
+	internal const ushort MenuMaskKey = Key.LCtrl;
 }
