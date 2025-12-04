@@ -17,7 +17,7 @@ namespace Lib.Hotkeys;
 
 // ReSharper disable InconsistentNaming
 
-internal readonly record struct HotkeyItem(Entry Entry, Remap Remap);
+internal readonly record struct RemapItem(Entry Entry, Remap Remap);
 internal readonly record struct UnicodeItem(Entry Entry, INPUT[] Inputs);
 
 public static class Hotkey // TODO: rename
@@ -31,7 +31,7 @@ public static class Hotkey // TODO: rename
 	
 	private static readonly HashSet<ushort> _suppressedKeys = [];
 	
-	private static HotkeyItem? _currHotkey; // TODO: rename to RemapItem? _currRemap
+	private static RemapItem? _currRemap;
 	private static UnicodeItem? _currUnicode;
 	
 	private static byte _suppressedEntryMods; // QMK key-overrides case
@@ -168,11 +168,13 @@ public static class Hotkey // TODO: rename
 		
 		if (isPressed)
 		{
-			if (OnKeyboardKeyDown(sc, isMod, modBit)) return NonZero;
+			if (HandleKbKeyDown(sc, isMod, modBit)) return NonZero;
+			if (isMod) _vMods |= modBit;
 		}
 		else
 		{
-			if (OnKeyboardKeyUp(sc, isMod, modBit)) return NonZero;
+			if (HandleKbKeyUp(sc, isMod, modBit)) return NonZero;
+			if (isMod) _vMods &= (byte)~modBit;
 		}
 		
 		Console.WriteLine($"Pass next: 0x{sc:X} ({_vMods:b8})");
@@ -181,7 +183,7 @@ public static class Hotkey // TODO: rename
 		return CallNextHookEx(0, code, wParam, lParam);
 	}
 	
-	private static bool OnKeyboardKeyDown(ushort sc, bool isMod, byte modBit)
+	private static bool HandleKbKeyDown(ushort sc, bool isMod, byte modBit)
 	{
 		if (_suppressedKeys.Contains(sc))
 		{
@@ -189,7 +191,7 @@ public static class Hotkey // TODO: rename
 			return true;
 		}
 		
-		if (_currHotkey is {} h)
+		if (_currRemap is {} h)
 		{
 			Debug.Assert(_currUnicode is null);
 			
@@ -198,7 +200,7 @@ public static class Hotkey // TODO: rename
 				var remapKey = h.Remap.Key;
 				Console.WriteLine($"Repeat: {h.Entry.Mods:b8}_0x{sc:X} -> {h.Remap.Mods:b8}_0x{remapKey:X} ({_vMods:b8})");
 				
-				if (sc == remapKey) goto CallNext;
+				if (sc == remapKey) return false;
 				SendKeyDown(remapKey);
 				return true;
 			}
@@ -210,7 +212,7 @@ public static class Hotkey // TODO: rename
 			}
 			
 			// TODO: implement compositional hotkeys (for mod-to-mod)?
-			goto CallNext;
+			return false;
 		}
 		
 		if (_currUnicode is {} u)
@@ -228,12 +230,12 @@ public static class Hotkey // TODO: rename
 				return true;
 			}
 			
-			goto CallNext;
+			return false;
 		}
 		
 		var entry = new Entry(_vMods, sc);
 		
-		if (!_hotkeys.TryGetValue(entry, out var handler)) goto CallNext;
+		if (!_hotkeys.TryGetValue(entry, out var handler)) return false;
 		
 		if (handler.IsAction)
 		{
@@ -242,41 +244,14 @@ public static class Hotkey // TODO: rename
 		
 		if (handler.IsUnicode)
 		{
-			string str = handler.Unicode();
-			if (string.IsNullOrEmpty(str)) goto CallNext;
-			return HandleUnicodeDown(str, entry);
+			return handler.Unicode() is {} str && HandleUnicodeDown(entry, str);
 		}
 		
 		Debug.Assert(handler.IsRemap);
-		
-		if (handler.Remap() is not {} remap) goto CallNext;
-		
-		var remapKeyModBit = ModBit(remap.Key);
-		
-		var modsToRelease = (byte)(entry.Mods & ~(remap.Mods | remapKeyModBit));
-		var modsToPress   = (byte)(remap.Mods & ~entry.Mods);
-		
-		_vMods = (byte)(remap.Mods | remapKeyModBit);
-		
-		_currHotkey = new HotkeyItem(entry, remap);
-		_suppressedEntryMods = entry.Mods;
-		
-		Console.WriteLine($"Remap: {entry.Mods:b8}_0x{sc:X} -> {remap.Mods:b8}_0x{remap.Key:X} ({_vMods:b8})");
-		
-		var ip = new ItemsPacker(stackalloc InputItem[9])
-			.ModsUp(modsToRelease)
-			.ModsDown(modsToPress)
-			.KeyDown(remap.Key);
-		
-		SendKeys(ip.GetItems());
-		return true;
-		
-		CallNext:
-		if (isMod) _vMods |= modBit;
-		return false;
+		return handler.Remap() is {} remap && HandleRemapDown(entry, remap);
 	}
 
-	private static bool OnKeyboardKeyUp(ushort sc, bool isMod, byte modBit)
+	private static bool HandleKbKeyUp(ushort sc, bool isMod, byte modBit)
 	{
 		if (_suppressedKeys.Remove(sc))
 		{
@@ -286,7 +261,7 @@ public static class Hotkey // TODO: rename
 		
 		if (_currUnicode is {} u)
 		{
-			Debug.Assert(_currHotkey is null);
+			Debug.Assert(_currRemap is null);
 			byte modsToRestore;
 			
 			if (u.Entry.Key == sc)
@@ -298,7 +273,7 @@ public static class Hotkey // TODO: rename
 				modsToRestore = (byte)(u.Entry.Mods & ~modBit);
 				_suppressedKeys.Add(u.Entry.Key);
 			}
-			else goto CallNext;
+			else return false;
 				
 			_vMods |= modsToRestore;
 			_currUnicode = null;
@@ -311,7 +286,7 @@ public static class Hotkey // TODO: rename
 			return true;
 		}
 		
-		if (_currHotkey is not {} h) goto CallNext;
+		if (_currRemap is not {} h) return false;
 		
 		if (h.Entry.Key == sc)
 		{
@@ -324,7 +299,7 @@ public static class Hotkey // TODO: rename
 			
 			_vMods = (byte)((_vMods | modsToRestore) & ~(modsToRelease | ModBit(h.Remap.Key)));
 			
-			_currHotkey = null;
+			_currRemap = null;
 			_suppressedEntryMods = 0;
 			
 			var ip = new ItemsPacker(stackalloc InputItem[9])
@@ -342,7 +317,7 @@ public static class Hotkey // TODO: rename
 			
 			_vMods &= (byte)~(h.Remap.Mods | ModBit(h.Remap.Key));
 			
-			_currHotkey = null;
+			_currRemap = null;
 			_suppressedEntryMods = 0;
 			
 			AddKeysToIgnoreList((byte)(h.Entry.Mods & ~modBit), h.Entry.Key); // exclude the released bit
@@ -355,12 +330,33 @@ public static class Hotkey // TODO: rename
 			return true;
 		}
 		
-		CallNext:
-		if (isMod) _vMods &= (byte)~modBit;
 		return false;
 	}
 	
-	private static bool HandleUnicodeDown(string str, Entry entry)
+	private static bool HandleRemapDown(Entry entry, Remap remap)
+	{
+		var remapKeyModBit = ModBit(remap.Key);
+		
+		var modsToRelease = (byte)(entry.Mods & ~(remap.Mods | remapKeyModBit));
+		var modsToPress   = (byte)(remap.Mods & ~entry.Mods);
+		
+		_vMods = (byte)(remap.Mods | remapKeyModBit);
+		
+		_currRemap = new RemapItem(entry, remap);
+		_suppressedEntryMods = entry.Mods;
+		
+		Console.WriteLine($"Remap: {entry.Mods:b8}_0x{entry.Key:X} -> {remap.Mods:b8}_0x{remap.Key:X} ({_vMods:b8})");
+		
+		var ip = new ItemsPacker(stackalloc InputItem[9])
+			.ModsUp(modsToRelease)
+			.ModsDown(modsToPress)
+			.KeyDown(remap.Key);
+		
+		SendKeys(ip.GetItems());
+		return true;
+	}
+	
+	private static bool HandleUnicodeDown(Entry entry, string str)
 	{
 		var inputs = new INPUT[str.Length*2];
 		
@@ -386,7 +382,7 @@ public static class Hotkey // TODO: rename
 		_currUnicode = new UnicodeItem(entry, inputs);
 		_suppressedEntryMods = modsToRelease;
 		
-		Console.WriteLine($"Unicode: 0x{entry.Key:X}");
+		Console.WriteLine($"Unicode: 0x{entry.Key:X} -> {str}");
 		
 		if (modsToRelease != 0)
 		{
