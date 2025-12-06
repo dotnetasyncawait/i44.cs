@@ -274,11 +274,11 @@ public static class Hotkey // TODO: rename
 				_suppressedKeys.Add(u.Entry.Key);
 			}
 			else return false;
-				
+			
 			_vMods |= modsToRestore;
 			_currUnicode = null;
 			_suppressedEntryMods = 0;
-				
+			
 			if (modsToRestore != 0)
 			{
 				UpdateModsMaskedUnicode(modsToRestore, true);
@@ -298,16 +298,17 @@ public static class Hotkey // TODO: rename
 			var modsToRestore = (byte)(h.Entry.Mods & ~h.Remap.Mods);
 			
 			_vMods = (byte)((_vMods | modsToRestore) & ~(modsToRelease | ModBit(h.Remap.Key)));
-			
 			_currRemap = null;
 			_suppressedEntryMods = 0;
 			
-			var ip = new ItemsPacker(stackalloc InputItem[9])
+			// TODO: MenuMask
+			
+			new KeySender(stackalloc InputItem[9])
 				.KeyUp(h.Remap.Key)
 				.ModsUp(modsToRelease)
-				.ModsDown(modsToRestore);
+				.ModsDown(modsToRestore)
+				.Send();
 			
-			SendKeys(ip.GetItems());
 			return true;
 		}
 		
@@ -316,17 +317,19 @@ public static class Hotkey // TODO: rename
 			// One of the 'Entry.Mods' is released — remove all the keys and ignore the entries.
 			
 			_vMods &= (byte)~(h.Remap.Mods | ModBit(h.Remap.Key));
-			
 			_currRemap = null;
 			_suppressedEntryMods = 0;
 			
 			AddKeysToIgnoreList((byte)(h.Entry.Mods & ~modBit), h.Entry.Key); // exclude the released bit
 			
-			var ip = new ItemsPacker(stackalloc InputItem[9])
-				.KeyUp(h.Remap.Key)
-				.ModsUp(h.Remap.Mods);
+			// TODO: MenuMask
+			// TODO: restore physically held mods?
 			
-			SendKeys(ip.GetItems());
+			new KeySender(stackalloc InputItem[9])
+				.KeyUp(h.Remap.Key)
+				.ModsUp(h.Remap.Mods)
+				.Send();
+			
 			return true;
 		}
 		
@@ -341,18 +344,19 @@ public static class Hotkey // TODO: rename
 		var modsToPress   = (byte)(remap.Mods & ~entry.Mods);
 		
 		_vMods = (byte)(remap.Mods | remapKeyModBit);
-		
 		_currRemap = new RemapItem(entry, remap);
 		_suppressedEntryMods = entry.Mods;
 		
 		Console.WriteLine($"Remap: {entry.Mods:b8}_0x{entry.Key:X} -> {remap.Mods:b8}_0x{remap.Key:X} ({_vMods:b8})");
 		
-		var ip = new ItemsPacker(stackalloc InputItem[9])
+		// TODO: MenuMask
+		
+		new KeySender(stackalloc InputItem[9])
 			.ModsUp(modsToRelease)
 			.ModsDown(modsToPress)
-			.KeyDown(remap.Key);
+			.KeyDown(remap.Key)
+			.Send();
 		
-		SendKeys(ip.GetItems());
 		return true;
 	}
 	
@@ -398,13 +402,13 @@ public static class Hotkey // TODO: rename
 		const byte menuMods = Mod.LA | Mod.RA | Mod.LW | Mod.RW;
 		var toMask = (mods & menuMods) != 0 && (mods & (Mod.LC | Mod.RC)) == 0;
 		
-		var ip = new ItemsPacker(stackalloc InputItem[8]);
+		var ks = new KeySender(stackalloc InputItem[8]);
 		
-		if (toMask) ip.KeyDown(MenuMaskKey);
-		ip.PackMods(mods, down);	
-		if (toMask) ip.KeyUp(MenuMaskKey);
+		if (toMask) ks.MaskDown();
+		ks.AddMods(mods, down);	
+		if (toMask) ks.MaskUp();
 		
-		SendKeys(ip.GetItems());
+		ks.Send();
 	}
 	
 	private static void AddKeysToIgnoreList(byte modBits, ushort key)
@@ -441,19 +445,6 @@ public static class Hotkey // TODO: rename
 	{
 		modBit = ModBit(sc);
 		return modBit != 0;
-	}
-	
-	private static void SendKeys(ReadOnlySpan<InputItem> items)
-	{
-		Span<INPUT> inputs = stackalloc INPUT[items.Length];
-			
-		for (int i = 0; i < items.Length; i++)
-		{
-			var item = items[i];
-			inputs[i] = INPUT.KeybdInput(item.Key, item.Flags, MAGNUM_CALLNEXT);
-		}
-
-		_ = SendInput((uint)inputs.Length, ref MemoryMarshal.GetReference(inputs), INPUT.Size);
 	}
 	
 	private static void SendKeyDown(ushort sc) => SendKey(sc, true);
