@@ -281,54 +281,55 @@ public static class Hotkey // TODO: rename
 			
 			if (modsToRestore != 0)
 			{
-				UpdateModsMaskedUnicode(modsToRestore, true);
+				new KeySender(stackalloc InputItem[8]).ModsDownMasked(modsToRestore).Send();
 			}
 			return true;
 		}
 		
-		if (_currRemap is not {} h) return false;
+		if (_currRemap is not {} r) return false;
 		
-		if (h.Entry.Key == sc)
+		if (r.Entry.Key == sc)
 		{
 			// Trigger key is released — revert the hotkey.
 			// Note: If one or all of the 'Remap.Mods' were already released, they will not be considered and
 			// will be 'released' anyway. Can that be undesired?
 			
-			var modsToRelease = (byte)(h.Remap.Mods & ~h.Entry.Mods);
-			var modsToRestore = (byte)(h.Entry.Mods & ~h.Remap.Mods);
+			var modsToRelease = (byte)(r.Remap.Mods & ~r.Entry.Mods);
+			var modsToRestore = (byte)(r.Entry.Mods & ~r.Remap.Mods);
 			
-			_vMods = (byte)((_vMods | modsToRestore) & ~(modsToRelease | ModBit(h.Remap.Key)));
+			_vMods = (byte)((_vMods | modsToRestore) & ~(modsToRelease | ModBit(r.Remap.Key)));
 			_currRemap = null;
 			_suppressedEntryMods = 0;
+		
+			var ks = new KeySender(stackalloc InputItem[11]);  // 11 events at max: (LSAW|RSAW, <key>) -> (LC|RC, <key>)
 			
-			// TODO: MenuMask
-			
-			new KeySender(stackalloc InputItem[9])
-				.KeyUp(h.Remap.Key)
-				.ModsUp(modsToRelease)
-				.ModsDown(modsToRestore)
-				.Send();
+			ks.KeyUp(r.Remap.Key);
+			if (modsToRelease != 0) ks.ModsUp(modsToRelease);
+			if (modsToRestore != 0) ks.ModsDownMasked(modsToRestore);
+			ks.Send();
 			
 			return true;
 		}
 		
-		if (isMod && (h.Entry.Mods & modBit) != 0)
+		if (isMod && (r.Entry.Mods & modBit) != 0)
 		{
 			// One of the 'Entry.Mods' is released — remove all the keys and ignore the entries.
 			
-			_vMods &= (byte)~(h.Remap.Mods | ModBit(h.Remap.Key));
+			var modsToRelease = r.Remap.Mods;
+			
+			_vMods &= (byte)~(modsToRelease | ModBit(r.Remap.Key));
 			_currRemap = null;
 			_suppressedEntryMods = 0;
 			
-			AddKeysToIgnoreList((byte)(h.Entry.Mods & ~modBit), h.Entry.Key); // exclude the released bit
+			AddKeysToIgnoreList((byte)(r.Entry.Mods & ~modBit), r.Entry.Key); // exclude the released bit
 			
-			// TODO: MenuMask
 			// TODO: restore physically held mods?
 			
-			new KeySender(stackalloc InputItem[9])
-				.KeyUp(h.Remap.Key)
-				.ModsUp(h.Remap.Mods)
-				.Send();
+			var ks = new KeySender(stackalloc InputItem[9]);
+			
+			ks.KeyUp(r.Remap.Key);
+			if (modsToRelease != 0) ks.ModsUp(modsToRelease);
+			ks.Send();
 			
 			return true;
 		}
@@ -349,13 +350,11 @@ public static class Hotkey // TODO: rename
 		
 		Console.WriteLine($"Remap: {entry.Mods:b8}_0x{entry.Key:X} -> {remap.Mods:b8}_0x{remap.Key:X} ({_vMods:b8})");
 		
-		// TODO: MenuMask
+		var ks = new KeySender(stackalloc InputItem[11]); // 11 events at max: (LSAW|RSAW, <key>) -> (LC|RC, <key>)
 		
-		new KeySender(stackalloc InputItem[9])
-			.ModsUp(modsToRelease)
-			.ModsDown(modsToPress)
-			.KeyDown(remap.Key)
-			.Send();
+		if (modsToRelease != 0) ks.ModsUpMasked(modsToRelease);
+		if (modsToPress   != 0) ks.ModsDown(modsToPress);
+		ks.KeyDown(remap.Key).Send();
 		
 		return true;
 	}
@@ -390,25 +389,11 @@ public static class Hotkey // TODO: rename
 		
 		if (modsToRelease != 0)
 		{
-			UpdateModsMaskedUnicode(modsToRelease, false);
+			new KeySender(stackalloc InputItem[8]).ModsUpMasked(modsToRelease).Send();
 		}
 		
 		SendInput((uint)inputs.Length, ref MemoryMarshal.GetReference(inputs), INPUT.Size);
 		return true;
-	}
-	
-	private static void UpdateModsMaskedUnicode(byte mods, bool down)
-	{
-		const byte menuMods = Mod.LA | Mod.RA | Mod.LW | Mod.RW;
-		var toMask = (mods & menuMods) != 0 && (mods & (Mod.LC | Mod.RC)) == 0;
-		
-		var ks = new KeySender(stackalloc InputItem[8]);
-		
-		if (toMask) ks.MaskDown();
-		ks.AddMods(mods, down);	
-		if (toMask) ks.MaskUp();
-		
-		ks.Send();
 	}
 	
 	private static void AddKeysToIgnoreList(byte modBits, ushort key)

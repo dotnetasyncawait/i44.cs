@@ -21,8 +21,8 @@ internal ref struct KeySender(Span<InputItem> items)
 	internal KeySender KeyDown(ushort sc) => AddKey(sc, true);
 	internal KeySender KeyUp(ushort sc) => AddKey(sc, false);
 	
-	internal KeySender MaskDown() => AddKey(MenuMaskKey, true);
-	internal KeySender MaskUp() => AddKey(MenuMaskKey, false);
+	internal KeySender ModsDownMasked(byte mods) => AddModsMasked(mods, true);
+	internal KeySender ModsUpMasked(byte mods) => AddModsMasked(mods, false);
 	
 	internal void Send()
 	{
@@ -38,9 +38,8 @@ internal ref struct KeySender(Span<InputItem> items)
 		_ = User32.SendInput((uint)inputs.Length, ref MemoryMarshal.GetReference(inputs), INPUT.Size);
 	}
 	
-	internal KeySender AddMods(byte modBits, bool down)
+	private KeySender AddMods(byte modBits, bool down)
 	{
-		if (modBits == 0) return this;
 		var flags = (ushort)(KEYEVENTF_SCANCODE | (down ? 0 : KEYEVENTF_KEYUP));
 		
 		// Add Control before (when pressing) or after (when releasing) others. This helps in cases when we don't mask mods
@@ -63,6 +62,17 @@ internal ref struct KeySender(Span<InputItem> items)
 			if ((modBits & Mod.LC) != 0) _items[_index++] = new InputItem(Key.LCtrl, flags);
 			if ((modBits & Mod.RC) != 0) _items[_index++] = new InputItem(Key.RCtrl, (ushort)(flags | KEYEVENTF_EXTENDEDKEY));
 		}
+		
+		return this;
+	}
+	
+	private KeySender AddModsMasked(byte mods, bool down)
+	{
+		bool toMask = (mods & (Mod.LAW | Mod.RAW)) != 0 && (mods & (Mod.LC | Mod.RC)) == 0;
+		
+		if (toMask) AddKey(MenuMaskKey, true);
+		AddMods(mods, down);
+		if (toMask) AddKey(MenuMaskKey, false);
 		
 		return this;
 	}
