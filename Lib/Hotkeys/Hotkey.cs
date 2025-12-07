@@ -264,41 +264,56 @@ public static class Hotkey // TODO: rename
 			return true;
 		}
 		
+		if (_currRemap is {} r)
+		{
+			Debug.Assert(_currUnicode is null);
+			return HandleRemapUp(r, sc, isMod, modBit);
+		}
+		
 		if (_currUnicode is {} u)
 		{
-			Debug.Assert(_currRemap is null);
-			
-			byte modsToRestore;
-			
-			if (u.Entry.Key == sc)
-			{
-				_currUnicode = null;
-				if (u.Inputs.Length == 0) return false;
-				
-				modsToRestore = u.Entry.Mods;
-			}
-			else if (isMod && (u.Entry.Mods & modBit) != 0)
-			{
-				_currUnicode = null;
-				if (u.Inputs.Length == 0) return false;
-				
-				modsToRestore = (byte)(u.Entry.Mods & ~modBit);
-				_suppressedKeys.Add(u.Entry.Key);
-			}
-			else return false;
-			
-			_vMods |= modsToRestore;
-			_suppressedEntryMods = 0;
-			
-			if (modsToRestore != 0)
-			{
-				new KeySender(stackalloc InputItem[8]).ModsDownMasked(modsToRestore).Send();
-			}
+			return HandleUnicodeUp(u, sc, isMod, modBit);
+		}
+		
+		return false;
+	}
+	
+	private static bool HandleRemapDown(Entry entry, Remap? remapN)
+	{
+		if (remapN is not {} remap)
+		{
+			_suppressedKeys.Add(entry.Key);
 			return true;
 		}
 		
-		if (_currRemap is not {} r) return false;
+		if (remap == default)
+		{
+			_currRemap = new RemapItem(entry, remap);
+			return false;
+		}
 		
+		var remapKeyModBit = ModBit(remap.Key);
+		
+		var modsToRelease = (byte)(entry.Mods & ~(remap.Mods | remapKeyModBit));
+		var modsToPress   = (byte)(remap.Mods & ~entry.Mods);
+		
+		_vMods = (byte)(remap.Mods | remapKeyModBit);
+		_currRemap = new RemapItem(entry, remap);
+		_suppressedEntryMods = entry.Mods;
+		
+		Console.WriteLine($"Remap: {entry.Mods:b8}_0x{entry.Key:X} -> {remap.Mods:b8}_0x{remap.Key:X} ({_vMods:b8})");
+		
+		var ks = new KeySender(stackalloc InputItem[11]); // 11 events at max: (LSAW|RSAW, <key>) -> (LC|RC, <key>)
+		
+		if (modsToRelease != 0) ks.ModsUpMasked(modsToRelease);
+		if (modsToPress   != 0) ks.ModsDown(modsToPress);
+		ks.KeyDown(remap.Key).Send();
+		
+		return true;
+	}
+	
+	private static bool HandleRemapUp(RemapItem r, ushort sc, bool isMod, byte modBit)
+	{
 		if (r.Entry.Key == sc)
 		{
 			_currRemap = null;
@@ -351,40 +366,6 @@ public static class Hotkey // TODO: rename
 		return false;
 	}
 	
-	private static bool HandleRemapDown(Entry entry, Remap? remapN)
-	{
-		if (remapN is not {} remap)
-		{
-			_suppressedKeys.Add(entry.Key);
-			return true;
-		}
-		
-		if (remap == default)
-		{
-			_currRemap = new RemapItem(entry, remap);
-			return false;
-		}
-		
-		var remapKeyModBit = ModBit(remap.Key);
-		
-		var modsToRelease = (byte)(entry.Mods & ~(remap.Mods | remapKeyModBit));
-		var modsToPress   = (byte)(remap.Mods & ~entry.Mods);
-		
-		_vMods = (byte)(remap.Mods | remapKeyModBit);
-		_currRemap = new RemapItem(entry, remap);
-		_suppressedEntryMods = entry.Mods;
-		
-		Console.WriteLine($"Remap: {entry.Mods:b8}_0x{entry.Key:X} -> {remap.Mods:b8}_0x{remap.Key:X} ({_vMods:b8})");
-		
-		var ks = new KeySender(stackalloc InputItem[11]); // 11 events at max: (LSAW|RSAW, <key>) -> (LC|RC, <key>)
-		
-		if (modsToRelease != 0) ks.ModsUpMasked(modsToRelease);
-		if (modsToPress   != 0) ks.ModsDown(modsToPress);
-		ks.KeyDown(remap.Key).Send();
-		
-		return true;
-	}
-	
 	private static bool HandleUnicodeDown(Entry entry, string str)
 	{
 		switch (str)
@@ -429,6 +410,37 @@ public static class Hotkey // TODO: rename
 		}
 		
 		SendInput((uint)inputs.Length, ref MemoryMarshal.GetReference(inputs), INPUT.Size);
+		return true;
+	}
+	
+	private static bool HandleUnicodeUp(UnicodeItem u, ushort sc, bool isMod, byte modBit)
+	{
+		byte modsToRestore;
+			
+		if (u.Entry.Key == sc)
+		{
+			_currUnicode = null;
+			if (u.Inputs.Length == 0) return false;
+			
+			modsToRestore = u.Entry.Mods;
+		}
+		else if (isMod && (u.Entry.Mods & modBit) != 0)
+		{
+			_currUnicode = null;
+			if (u.Inputs.Length == 0) return false;
+			
+			modsToRestore = (byte)(u.Entry.Mods & ~modBit);
+			_suppressedKeys.Add(u.Entry.Key);
+		}
+		else return false;
+		
+		_vMods |= modsToRestore;
+		_suppressedEntryMods = 0;
+		
+		if (modsToRestore != 0)
+		{
+			new KeySender(stackalloc InputItem[8]).ModsDownMasked(modsToRestore).Send();
+		}
 		return true;
 	}
 	
