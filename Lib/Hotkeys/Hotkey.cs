@@ -191,14 +191,20 @@ public static class Hotkey // TODO: rename
 			return true;
 		}
 		
-		if (_currRemap is {} h)
+		if (_currRemap is {} r)
 		{
 			Debug.Assert(_currUnicode is null);
 			
-			if (h.Entry.Key == sc)
+			if (r.Entry.Key == sc)
 			{
-				var remapKey = h.Remap.Key;
-				Console.WriteLine($"Repeat: {h.Entry.Mods:b8}_0x{sc:X} -> {h.Remap.Mods:b8}_0x{remapKey:X} ({_vMods:b8})");
+				if (r.Remap == default)
+				{
+					Console.WriteLine("Repeat Remap default");
+					return false;
+				}
+				
+				var remapKey = r.Remap.Key;
+				Console.WriteLine($"Repeat: {r.Entry.Mods:b8}_0x{sc:X} -> {r.Remap.Mods:b8}_0x{remapKey:X} ({_vMods:b8})");
 				
 				if (sc == remapKey) return false;
 				SendKeyDown(remapKey);
@@ -219,6 +225,12 @@ public static class Hotkey // TODO: rename
 		{
 			if (u.Entry.Key == sc)
 			{
+				if (u.Inputs.Length == 0)
+				{
+					Console.WriteLine("Repeat Unicode default");
+					return false;
+				}
+				
 				Console.WriteLine("Repeat Unicode");
 				SendInput((uint)u.Inputs.Length, ref MemoryMarshal.GetReference(u.Inputs), INPUT.Size);
 				return true;
@@ -237,18 +249,11 @@ public static class Hotkey // TODO: rename
 		
 		if (!_hotkeys.TryGetValue(entry, out var handler)) return false;
 		
-		if (handler.IsAction)
-		{
-			throw new NotImplementedException();
-		}
+		if (handler.IsRemap) return HandleRemapDown(entry, handler.Remap());
+		if (handler.IsUnicode) return HandleUnicodeDown(entry, handler.Unicode());
 		
-		if (handler.IsUnicode)
-		{
-			return handler.Unicode() is {} str && HandleUnicodeDown(entry, str);
-		}
-		
-		Debug.Assert(handler.IsRemap);
-		return handler.Remap() is {} remap && HandleRemapDown(entry, remap);
+		Debug.Assert(handler.IsAction);
+		throw new NotImplementedException();
 	}
 
 	private static bool HandleKbKeyUp(ushort sc, bool isMod, byte modBit)
@@ -262,21 +267,27 @@ public static class Hotkey // TODO: rename
 		if (_currUnicode is {} u)
 		{
 			Debug.Assert(_currRemap is null);
+			
 			byte modsToRestore;
 			
 			if (u.Entry.Key == sc)
 			{
+				_currUnicode = null;
+				if (u.Inputs.Length == 0) return false;
+				
 				modsToRestore = u.Entry.Mods;
 			}
 			else if (isMod && (u.Entry.Mods & modBit) != 0)
 			{
+				_currUnicode = null;
+				if (u.Inputs.Length == 0) return false;
+				
 				modsToRestore = (byte)(u.Entry.Mods & ~modBit);
 				_suppressedKeys.Add(u.Entry.Key);
 			}
 			else return false;
 			
 			_vMods |= modsToRestore;
-			_currUnicode = null;
 			_suppressedEntryMods = 0;
 			
 			if (modsToRestore != 0)
@@ -290,7 +301,9 @@ public static class Hotkey // TODO: rename
 		
 		if (r.Entry.Key == sc)
 		{
-			// Trigger key is released — revert the hotkey.
+			_currRemap = null;
+			if (r.Remap == default) return false;
+			
 			// Note: If one or all of the 'Remap.Mods' were already released, they will not be considered and
 			// will be 'released' anyway. Can that be undesired?
 			
@@ -313,7 +326,8 @@ public static class Hotkey // TODO: rename
 		
 		if (isMod && (r.Entry.Mods & modBit) != 0)
 		{
-			// One of the 'Entry.Mods' is released — remove all the keys and ignore the entries.
+			_currRemap = null;
+			if (r.Remap == default) return false;
 			
 			var modsToRelease = r.Remap.Mods;
 			
@@ -337,8 +351,20 @@ public static class Hotkey // TODO: rename
 		return false;
 	}
 	
-	private static bool HandleRemapDown(Entry entry, Remap remap)
+	private static bool HandleRemapDown(Entry entry, Remap? remapN)
 	{
+		if (remapN is not {} remap)
+		{
+			_suppressedKeys.Add(entry.Key);
+			return true;
+		}
+		
+		if (remap == default)
+		{
+			_currRemap = new RemapItem(entry, remap);
+			return false;
+		}
+		
 		var remapKeyModBit = ModBit(remap.Key);
 		
 		var modsToRelease = (byte)(entry.Mods & ~(remap.Mods | remapKeyModBit));
@@ -361,6 +387,16 @@ public static class Hotkey // TODO: rename
 	
 	private static bool HandleUnicodeDown(Entry entry, string str)
 	{
+		switch (str)
+		{
+			case null:
+				_suppressedKeys.Add(entry.Key);
+				return true;
+			case "":
+				_currUnicode = new UnicodeItem(entry, []);
+				return false;
+		}
+		
 		var inputs = new INPUT[str.Length*2];
 		
 		for (int i = 0, j = 0; i < str.Length; i++)
