@@ -19,6 +19,7 @@ namespace Lib.Hotkeys;
 
 internal readonly record struct RemapItem(Entry Entry, Remap Remap);
 internal readonly record struct UnicodeItem(Entry Entry, INPUT[] Inputs);
+internal readonly record struct ActionItem(Entry Entry, KeyEvent KeyUp);
 
 public static class Hotkey // TODO: rename
 {
@@ -33,6 +34,7 @@ public static class Hotkey // TODO: rename
 	
 	private static RemapItem? _currRemap;
 	private static UnicodeItem? _currUnicode;
+	private static ActionItem? _currAction;
 	
 	private static byte _suppressedEntryMods; // QMK key-overrides case
 	
@@ -92,7 +94,7 @@ public static class Hotkey // TODO: rename
 			{
 				if (method.GetParameters().Length != 0)
 				{
-					throw new NotImplementedException("Invalid parameters");
+					throw new NotImplementedException("Invalid function signature");
 				}
 				handler = new HotkeyHandler(method.CreateDelegate<Func<Remap?>>());
 			}
@@ -100,22 +102,22 @@ public static class Hotkey // TODO: rename
 			{
 				if (method.GetParameters().Length != 0)
 				{
-					throw new NotImplementedException("Invalid parameters");
+					throw new NotImplementedException("Invalid function signature");
 				}
 				handler = new HotkeyHandler(method.CreateDelegate<Func<string>>());
 			}
-			// else if (method.ReturnType == typeof(void)) // action
-			// {
-			// 	var parameters = method.GetParameters();
-			// 	if (parameters.Length != 1 || parameters.First().ParameterType != typeof(bool))
-			// 	{
-			// 		throw new NotImplementedException("Invalid parameters");
-			// 	}
-			// 	handler = new HotkeyHandler(method.CreateDelegate<Action<bool>>());
-			// }
+			else if (method.ReturnType == typeof(void)) // action
+			{
+				var parameters = method.GetParameters();
+				if (parameters.Length != 1 || parameters.First().ParameterType != typeof(KeyEvent))
+				{
+					throw new NotImplementedException("Invalid function signature");
+				}
+				handler = new HotkeyHandler(method.CreateDelegate<Action<KeyEvent>>());
+			}
 			else
 			{
-				throw new NotImplementedException("Invalid return type");
+				throw new NotImplementedException("Invalid function signature");
 			}
 			
 			foreach (var attribute in method.GetCustomAttributes<HotkeyAttribute>())
@@ -245,15 +247,26 @@ public static class Hotkey // TODO: rename
 			return false;
 		}
 		
+		if (_currAction is {} a)
+		{
+			if (a.Entry.Key == sc) return true;
+			
+			if (isMod && (_suppressedEntryMods & modBit) != 0)
+			{
+				Console.WriteLine($"Suppress entry mod: 0x{sc:X}");
+				return true;
+			}
+			
+			return false;
+		}
+		
 		var entry = new Entry(_vMods, sc);
 		
 		if (!_hotkeys.TryGetValue(entry, out var handler)) return false;
 		
 		if (handler.IsRemap) return HandleRemapDown(entry, handler.Remap());
 		if (handler.IsUnicode) return HandleUnicodeDown(entry, handler.Unicode());
-		
-		Debug.Assert(handler.IsAction);
-		throw new NotImplementedException();
+		Debug.Assert(handler.IsAction); return HandleActionDown(entry, handler.Action);
 	}
 
 	private static bool HandleKbKeyUp(ushort sc, bool isMod, byte modBit)
@@ -267,12 +280,25 @@ public static class Hotkey // TODO: rename
 		if (_currRemap is {} r)
 		{
 			Debug.Assert(_currUnicode is null);
+			Debug.Assert(_currAction is null);
 			return HandleRemapUp(r, sc, isMod, modBit);
 		}
 		
 		if (_currUnicode is {} u)
 		{
+			Debug.Assert(_currAction is null);
 			return HandleUnicodeUp(u, sc, isMod, modBit);
+		}
+		
+		if (_currAction is {} a && a.Entry.Key == sc)
+		{
+			try
+			{
+				a.KeyUp.Set();
+				// TODO: write all the possible outcomes for not synchronizing 
+			}
+			catch (ObjectDisposedException) { }
+			return true;
 		}
 		
 		return false;
@@ -441,6 +467,30 @@ public static class Hotkey // TODO: rename
 		{
 			new KeySender(stackalloc InputItem[8]).ModsDownMasked(modsToRestore).Send();
 		}
+		return true;
+	}
+	
+	private static bool HandleActionDown(Entry entry, Action<KeyEvent> action)
+	{
+		var keyEvent = new KeyEvent();
+		
+		_currAction = new ActionItem(entry, keyEvent);
+		_suppressedEntryMods = entry.Mods;
+		
+		ThreadPool.QueueUserWorkItem(static x =>
+		{
+			try { x.Key(x.Value); }
+			finally
+			{
+				var item = _currAction.Value;
+			
+				_currAction = null;
+				_suppressedEntryMods = 0;
+				
+				item.KeyUp.Dispose();
+			}
+		}, new KeyValuePair<Action<KeyEvent>, KeyEvent>(action, keyEvent), false);
+		
 		return true;
 	}
 	

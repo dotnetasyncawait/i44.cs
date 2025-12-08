@@ -10,13 +10,13 @@ internal class HotkeyHandler
 	[MemberNotNullWhen(true, nameof(Unicode))] internal bool IsUnicode { get; }
 	
 	internal Func<Remap?>? Remap { get; }
-	internal Action<bool>? Action { get; }
+	internal Action<KeyEvent>? Action { get; }
 	internal Func<string>? Unicode { get; }
 	
 	internal HotkeyHandler(Func<Remap?> remap) =>
 		(IsRemap, Remap, IsAction, Action, IsUnicode, Unicode) = (true, remap, false, null, false, null);
 	
-	internal HotkeyHandler(Action<bool> action) =>
+	internal HotkeyHandler(Action<KeyEvent> action) =>
 		(IsRemap, Remap, IsAction, Action, IsUnicode, Unicode) = (false, null, true, action, false, null);
 	
 	internal HotkeyHandler(Func<string> unicode) =>
