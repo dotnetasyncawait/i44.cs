@@ -36,8 +36,6 @@ public static class Hotkey // TODO: rename
 	private static UnicodeItem? _currUnicode;
 	private static ActionItem? _currAction;
 	
-	private static byte _suppressedEntryMods; // QMK key-overrides case
-	
 	public static void Run()
 	{
 		if (_hotkeys.Count == 0)
@@ -213,7 +211,7 @@ public static class Hotkey // TODO: rename
 				return true;
 			}
 			
-			if (isMod && (_suppressedEntryMods & modBit) != 0)
+			if (isMod && (r.Entry.Mods & modBit) != 0)
 			{
 				Console.WriteLine($"Suppress entry mod: 0x{sc:X}");
 				return true;
@@ -238,7 +236,7 @@ public static class Hotkey // TODO: rename
 				return true;
 			}
 			
-			if (isMod && (_suppressedEntryMods & modBit) != 0)
+			if (isMod && (u.Entry.Mods & modBit) != 0)
 			{
 				Console.WriteLine($"Suppress entry mod: 0x{sc:X}");
 				return true;
@@ -251,7 +249,7 @@ public static class Hotkey // TODO: rename
 		{
 			if (a.Entry.Key == sc) return true;
 			
-			if (isMod && (_suppressedEntryMods & modBit) != 0)
+			if (isMod && (a.Entry.Mods & modBit) != 0)
 			{
 				Console.WriteLine($"Suppress entry mod: 0x{sc:X}");
 				return true;
@@ -325,7 +323,6 @@ public static class Hotkey // TODO: rename
 		
 		_vMods = (byte)(remap.Mods | remapKeyModBit);
 		_currRemap = new RemapItem(entry, remap);
-		_suppressedEntryMods = entry.Mods;
 		
 		Console.WriteLine($"Remap: {entry.Mods:b8}_0x{entry.Key:X} -> {remap.Mods:b8}_0x{remap.Key:X} ({_vMods:b8})");
 		
@@ -353,7 +350,6 @@ public static class Hotkey // TODO: rename
 			
 			_vMods = (byte)((_vMods | modsToRestore) & ~(modsToRelease | ModBit(r.Remap.Key)));
 			_currRemap = null;
-			_suppressedEntryMods = 0;
 		
 			var ks = new KeySender(stackalloc InputItem[11]);  // 11 events at max: (LSAW|RSAW, <key>) -> (LC|RC, <key>)
 			
@@ -374,7 +370,6 @@ public static class Hotkey // TODO: rename
 			
 			_vMods &= (byte)~(modsToRelease | ModBit(r.Remap.Key));
 			_currRemap = null;
-			_suppressedEntryMods = 0;
 			
 			AddKeysToIgnoreList((byte)(r.Entry.Mods & ~modBit), r.Entry.Key); // exclude the released bit
 			
@@ -423,13 +418,12 @@ public static class Hotkey // TODO: rename
 			inputs[j++] = INPUT.KeybdInput(low,  KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, MAGNUM_CALLNEXT);
 		}
 		
-		var modsToRelease = entry.Mods;
 		_vMods = 0;
 		_currUnicode = new UnicodeItem(entry, inputs);
-		_suppressedEntryMods = modsToRelease;
 		
 		Console.WriteLine($"Unicode: 0x{entry.Key:X} -> {str}");
 		
+		var modsToRelease = entry.Mods;
 		if (modsToRelease != 0)
 		{
 			new KeySender(stackalloc InputItem[8]).ModsUpMasked(modsToRelease).Send();
@@ -461,7 +455,6 @@ public static class Hotkey // TODO: rename
 		else return false;
 		
 		_vMods |= modsToRestore;
-		_suppressedEntryMods = 0;
 		
 		if (modsToRestore != 0)
 		{
@@ -473,21 +466,16 @@ public static class Hotkey // TODO: rename
 	private static bool HandleActionDown(Entry entry, Action<KeyEvent> action)
 	{
 		var keyEvent = new KeyEvent();
-		
 		_currAction = new ActionItem(entry, keyEvent);
-		_suppressedEntryMods = entry.Mods;
 		
 		ThreadPool.QueueUserWorkItem(static x =>
 		{
 			try { x.Key(x.Value); }
 			finally
 			{
-				var item = _currAction.Value;
-			
+				var keyEvent = _currAction.Value.KeyUp;
 				_currAction = null;
-				_suppressedEntryMods = 0;
-				
-				item.KeyUp.Dispose();
+				keyEvent.Dispose();
 			}
 		}, new KeyValuePair<Action<KeyEvent>, KeyEvent>(action, keyEvent), false);
 		
