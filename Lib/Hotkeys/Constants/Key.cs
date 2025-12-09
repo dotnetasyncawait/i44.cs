@@ -2,6 +2,20 @@
 
 public static class Key
 {
+	#region Mouse Keys
+	
+	public const ushort LButton    = 0x0200;
+	public const ushort RButton    = 0x0201;
+	public const ushort MButton    = 0x0202;
+	public const ushort XButton1   = 0x0203;
+	public const ushort XButton2   = 0x0204;
+	public const ushort WheelUp    = 0x0205;
+	public const ushort WheelDown  = 0x0206;
+	public const ushort WheelLeft  = 0x0207;
+	public const ushort WheelRight = 0x0208;
+	
+	#endregion
+	
 	#region Letters
 	
 	public const ushort A = 0x001E;

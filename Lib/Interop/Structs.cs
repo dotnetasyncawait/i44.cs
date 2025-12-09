@@ -1,5 +1,4 @@
-﻿using System;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
 namespace Lib.Interop;
 
@@ -38,11 +37,19 @@ internal static class Structs
 		
 		internal static readonly unsafe int Size = sizeof(INPUT);
 		
-		internal static INPUT KeybdInput(ushort sc = 0, uint flags = 0, UIntPtr extraInfo = 0, ushort vk = 0, uint time = 0)
+		internal static INPUT KeybdInput(ushort sc = 0, uint flags = 0, nuint extraInfo = 0, ushort vk = 0, uint time = 0)
 			=> new()
 			{
 				type = Constants.INPUT_KEYBOARD,
 				u = new DUMMYUNION { ki = new KEYBDINPUT { mVk = vk, wScan = sc, dwFlags = flags, time = time, dwExtraInfo = extraInfo } }
+			};
+		
+		internal static INPUT MouseInput(uint data, uint flags, nuint extraInfo, int x = 0, int y = 0, uint time = 0)
+			=> new()
+			{
+				type = Constants.INPUT_MOUSE,
+				u = new DUMMYUNION
+				{ mi = new MOUSEINPUT { dx = x, dy = y, mouseData = data, dwFlags = flags, time = time, dwExtraInfo = extraInfo } }
 			};
 	}
 	

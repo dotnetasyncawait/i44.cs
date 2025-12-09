@@ -247,7 +247,11 @@ public static class Hotkey // TODO: rename
 		
 		if (_currAction is {} a)
 		{
-			if (a.Entry.Key == sc) return true;
+			if (a.Entry.Key == sc)
+			{
+				Console.WriteLine("Action still in progress");
+				return true;
+			}
 			
 			if (isMod && (a.Entry.Mods & modBit) != 0)
 			{
@@ -290,11 +294,7 @@ public static class Hotkey // TODO: rename
 		
 		if (_currAction is {} a && a.Entry.Key == sc)
 		{
-			try
-			{
-				a.KeyUp.Set();
-				// TODO: write all the possible outcomes for not synchronizing 
-			}
+			try { a.KeyUp.Set(); }
 			catch (ObjectDisposedException) { }
 			return true;
 		}
@@ -467,12 +467,19 @@ public static class Hotkey // TODO: rename
 	{
 		var keyEvent = new KeyEvent();
 		_currAction = new ActionItem(entry, keyEvent);
+		Console.WriteLine("Action");
 		
 		ThreadPool.QueueUserWorkItem(static x =>
 		{
 			try { x.Key(x.Value); }
 			finally
 			{
+				// TODO: Synchronize with the call to KeyEvent.Set() to avoid race-conditions.
+				// Such conditions can lead to one of the following outcomes:
+				// - Cancel() is called after the source has been disposed -> ObjectDisposedException;
+				// - Dispose() is called during the transition to NotifyingState -> wait handle is not disposed leaving
+				//   cleanup to finalization.
+				
 				var keyEvent = _currAction.Value.KeyUp;
 				_currAction = null;
 				keyEvent.Dispose();
