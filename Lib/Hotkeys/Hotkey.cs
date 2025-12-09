@@ -2,11 +2,11 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Lib.Hotkeys.Constants;
-using Lib.Hotkeys.Helpers;
 using Lib.Interop;
 using static Lib.Hotkeys.Constants.Misc;
 using static Lib.Interop.User32;
@@ -326,9 +326,12 @@ public static class Hotkey // TODO: rename
 		
 		Console.WriteLine($"Remap: {entry.Mods:b8}_0x{entry.Key:X} -> {remap.Mods:b8}_0x{remap.Key:X} ({_vMods:b8})");
 		
-		var ks = new KeySender(stackalloc InputItem[11]); // 11 events at max: (LSAW|RSAW, <key>) -> (LC|RC, <key>)
+		bool mask = ShouldMask(modsToRelease);
+		var size = BitOperations.PopCount((byte)(modsToPress | modsToRelease)) + (mask ? 2 : 0) + 1;
 		
-		if (modsToRelease != 0) ks.ModsUpMasked(modsToRelease);
+		var ks = new KeySender(stackalloc INPUT[size]);
+		
+		if (modsToRelease != 0) ks.ModsUp(modsToRelease, mask);
 		if (modsToPress   != 0) ks.ModsDown(modsToPress);
 		ks.KeyDown(remap.Key).Send();
 		
@@ -351,11 +354,14 @@ public static class Hotkey // TODO: rename
 			_vMods = (byte)((_vMods | modsToRestore) & ~(modsToRelease | ModBit(r.Remap.Key)));
 			_currRemap = null;
 		
-			var ks = new KeySender(stackalloc InputItem[11]);  // 11 events at max: (LSAW|RSAW, <key>) -> (LC|RC, <key>)
+			bool mask = ShouldMask(modsToRestore);
+			var size = BitOperations.PopCount((byte)(modsToRelease | modsToRestore)) + (mask ? 2 : 0) + 1;
+			
+			var ks = new KeySender(stackalloc INPUT[size]);
 			
 			ks.KeyUp(r.Remap.Key);
 			if (modsToRelease != 0) ks.ModsUp(modsToRelease);
-			if (modsToRestore != 0) ks.ModsDownMasked(modsToRestore);
+			if (modsToRestore != 0) ks.ModsDown(modsToRestore, mask);
 			ks.Send();
 			
 			return true;
@@ -375,7 +381,8 @@ public static class Hotkey // TODO: rename
 			
 			// TODO: restore physically held mods?
 			
-			var ks = new KeySender(stackalloc InputItem[9]);
+			var size = BitOperations.PopCount(modsToRelease) + 1;
+			var ks = new KeySender(stackalloc INPUT[size]);
 			
 			ks.KeyUp(r.Remap.Key);
 			if (modsToRelease != 0) ks.ModsUp(modsToRelease);
@@ -426,7 +433,10 @@ public static class Hotkey // TODO: rename
 		var modsToRelease = entry.Mods;
 		if (modsToRelease != 0)
 		{
-			new KeySender(stackalloc InputItem[8]).ModsUpMasked(modsToRelease).Send();
+			bool mask = ShouldMask(modsToRelease);
+			var size = BitOperations.PopCount(modsToRelease) + (mask ? 2 : 0);
+			
+			new KeySender(stackalloc INPUT[size]).ModsUp(modsToRelease, mask).Send();
 		}
 		
 		SendInput((uint)inputs.Length, ref MemoryMarshal.GetReference(inputs), INPUT.Size);
@@ -458,7 +468,10 @@ public static class Hotkey // TODO: rename
 		
 		if (modsToRestore != 0)
 		{
-			new KeySender(stackalloc InputItem[8]).ModsDownMasked(modsToRestore).Send();
+			bool mask = ShouldMask(modsToRestore);
+			var size = BitOperations.PopCount(modsToRestore) + (mask ? 2 : 0);
+			
+			new KeySender(stackalloc INPUT[size]).ModsDown(modsToRestore, mask).Send();
 		}
 		return true;
 	}
@@ -525,13 +538,13 @@ public static class Hotkey // TODO: rename
 		return modBit != 0;
 	}
 	
+	private static bool ShouldMask(byte mods) => (mods & (Mod.LAW | Mod.RAW)) != 0 && (mods & (Mod.LC | Mod.RC)) == 0;
+	
 	private static void SendKeyDown(ushort sc) => SendKey(sc, true);
 	
-	private static void SendKey(ushort sc, bool state)
+	private static void SendKey(ushort key, bool down)
 	{
-		var flags = KEYEVENTF_SCANCODE | (sc >> 8 != 0 ? KEYEVENTF_EXTENDEDKEY : 0) | (state ? 0 : KEYEVENTF_KEYUP);
-		
-		var input = INPUT.KeybdInput(sc, (uint)flags, MAGNUM_CALLNEXT);
+		var input = Helper.IsMouseKey(key) ? INPUT.MouseKey(key, down) : INPUT.KeybdKey(key, down);
 		_ = SendInput(1, ref input, INPUT.Size);
 	}
 }
