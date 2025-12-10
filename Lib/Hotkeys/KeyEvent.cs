@@ -4,7 +4,7 @@ namespace Lib.Hotkeys;
 
 public class KeyEvent
 {
-	private readonly CancellationTokenSource _cts = new(); // TODO: dispose?
+	private readonly CancellationTokenSource _cts = new();
 	
 	internal void Set() => _cts.Cancel();
 	internal void Dispose() => _cts.Dispose();

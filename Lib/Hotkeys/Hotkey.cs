@@ -194,6 +194,7 @@ public static class Hotkey // TODO: rename
 		if (_currRemap is {} r)
 		{
 			Debug.Assert(_currUnicode is null);
+			Debug.Assert(_currAction is null);
 			
 			if (r.Entry.Key == sc)
 			{
@@ -204,6 +205,13 @@ public static class Hotkey // TODO: rename
 				}
 				
 				var remapKey = r.Remap.Key;
+				
+				if (Helper.IsMouseButton(remapKey))
+				{
+					Console.WriteLine("Repeat suppressed (mouse button)");
+					return true;
+				}
+				
 				Console.WriteLine($"Repeat: {r.Entry.Mods:b8}_0x{sc:X} -> {r.Remap.Mods:b8}_0x{remapKey:X} ({_vMods:b8})");
 				
 				if (sc == remapKey) return false;
@@ -223,6 +231,8 @@ public static class Hotkey // TODO: rename
 		
 		if (_currUnicode is {} u)
 		{
+			Debug.Assert(_currAction is null);
+			
 			if (u.Entry.Key == sc)
 			{
 				if (u.Inputs.Length == 0)
@@ -352,14 +362,16 @@ public static class Hotkey // TODO: rename
 			var modsToRestore = (byte)(r.Entry.Mods & ~r.Remap.Mods);
 			
 			_vMods = (byte)((_vMods | modsToRestore) & ~(modsToRelease | ModBit(r.Remap.Key)));
-			_currRemap = null;
 		
+			var isWheel = Helper.IsMouseWheel(r.Remap.Key);
 			bool mask = ShouldMask(modsToRestore);
-			var size = BitOperations.PopCount((byte)(modsToRelease | modsToRestore)) + (mask ? 2 : 0) + 1;
+			
+			var size = BitOperations.PopCount((byte)(modsToRelease | modsToRestore)) + (mask ? 2 : 0) + (isWheel ? 0 : 1);
+			if (size == 0) return true;
 			
 			var ks = new KeySender(stackalloc INPUT[size]);
 			
-			ks.KeyUp(r.Remap.Key);
+			if (!isWheel) ks.KeyUp(r.Remap.Key);
 			if (modsToRelease != 0) ks.ModsUp(modsToRelease);
 			if (modsToRestore != 0) ks.ModsDown(modsToRestore, mask);
 			ks.Send();
@@ -375,16 +387,17 @@ public static class Hotkey // TODO: rename
 			var modsToRelease = r.Remap.Mods;
 			
 			_vMods &= (byte)~(modsToRelease | ModBit(r.Remap.Key));
-			_currRemap = null;
-			
 			AddKeysToIgnoreList((byte)(r.Entry.Mods & ~modBit), r.Entry.Key); // exclude the released bit
 			
 			// TODO: restore physically held mods?
 			
-			var size = BitOperations.PopCount(modsToRelease) + 1;
+			var isWheel = Helper.IsMouseWheel(r.Remap.Key);
+			var size = BitOperations.PopCount(modsToRelease) + (isWheel ? 0 : 1);
+			if (size == 0) return true;
+			
 			var ks = new KeySender(stackalloc INPUT[size]);
 			
-			ks.KeyUp(r.Remap.Key);
+			if (!isWheel) ks.KeyUp(r.Remap.Key);
 			if (modsToRelease != 0) ks.ModsUp(modsToRelease);
 			ks.Send();
 			

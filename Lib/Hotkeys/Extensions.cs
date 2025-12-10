@@ -21,10 +21,10 @@ internal static class Extensions
 				Key.XButton1 => (MOUSEEVENTF_XDOWN, XBUTTON1),
 				Key.XButton2 => (MOUSEEVENTF_XDOWN, XBUTTON2),
 				
-				Key.WheelUp    => (MOUSEEVENTF_WHEEL, (uint)WHEEL_DELTA),
-				Key.WheelDown  => (MOUSEEVENTF_WHEEL, unchecked((uint)-WHEEL_DELTA)),
-				Key.WheelLeft  => (MOUSEEVENTF_HWHEEL, (uint)WHEEL_DELTA),
-				Key.WheelRight => (MOUSEEVENTF_HWHEEL, unchecked((uint)-WHEEL_DELTA)),
+				Key.WheelUp    => (MOUSEEVENTF_WHEEL,  (uint)WHEEL_DELTA),
+				Key.WheelDown  => (MOUSEEVENTF_WHEEL,  unchecked((uint)-WHEEL_DELTA)),
+				Key.WheelLeft  => (MOUSEEVENTF_HWHEEL, unchecked((uint)-WHEEL_DELTA)),
+				Key.WheelRight => (MOUSEEVENTF_HWHEEL, (uint)WHEEL_DELTA),
 				
 				_ => throw new Exception($"Invalid mouse key 0x{key:X}")
 			};
