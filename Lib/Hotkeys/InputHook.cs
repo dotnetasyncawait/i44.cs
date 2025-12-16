@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -18,7 +19,7 @@ namespace Lib.Hotkeys;
 // ReSharper disable InconsistentNaming
 
 internal readonly record struct RemapItem(Entry Entry, Remap Remap);
-internal readonly record struct UnicodeItem(Entry Entry, INPUT[] Inputs);
+internal readonly record struct UnicodeItem(Entry Entry, int Length, INPUT[] Inputs);
 internal readonly record struct ActionItem(Entry Entry, KeyEvent KeyUp);
 
 public static class InputHook
@@ -406,7 +407,8 @@ public static class InputHook
 			return true;
 		}
 		
-		var inputs = new INPUT[str.Length*2]; // TODO: use ArrayPool<INPUT>
+		var length = str.Length * 2;
+		var inputs = ArrayPool<INPUT>.Shared.Rent(length);
 		
 		for (int i = 0, j = 0; i < str.Length; i++)
 		{
@@ -426,7 +428,7 @@ public static class InputHook
 		}
 		
 		_vMods = 0;
-		_currUnicode = new UnicodeItem(entry, inputs);
+		_currUnicode = new UnicodeItem(entry, length, inputs);
 		
 		Console.WriteLine($"Unicode: 0x{entry.Key:X} -> {str}");
 		
@@ -438,7 +440,7 @@ public static class InputHook
 			new KeySender(stackalloc INPUT[size]).ModsUp(modsToRelease, mask).Send();
 		}
 		
-		SendInput((uint)inputs.Length, ref MemoryMarshal.GetReference(inputs), INPUT.Size);
+		SendInput((uint)length, ref MemoryMarshal.GetReference(inputs), INPUT.Size);
 		return true;
 	}
 	
@@ -457,6 +459,7 @@ public static class InputHook
 		}
 		else return false;
 		
+		ArrayPool<INPUT>.Shared.Return(u.Inputs);
 		_currUnicode = null;
 		_vMods |= modsToRestore;
 		
@@ -475,7 +478,7 @@ public static class InputHook
 		if (u.Entry.Key == sc)
 		{
 			Console.WriteLine("Repeat Unicode");
-			SendInput((uint)u.Inputs.Length, ref MemoryMarshal.GetReference(u.Inputs), INPUT.Size);
+			SendInput((uint)u.Length, ref MemoryMarshal.GetReference(u.Inputs), INPUT.Size);
 			return true;
 		}
 		
@@ -492,6 +495,7 @@ public static class InputHook
 
 		var modsToRestore = u.Entry.Mods;
 
+		ArrayPool<INPUT>.Shared.Return(u.Inputs);
 		_currUnicode = null;
 		_vMods |= modsToRestore;
 		_suppressedKeys.Add(u.Entry.Key);
