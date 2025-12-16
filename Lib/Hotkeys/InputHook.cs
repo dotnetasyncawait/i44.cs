@@ -170,58 +170,13 @@ public static class InputHook
 		{
 			Debug.Assert(_currUnicode is null);
 			Debug.Assert(_currAction is null);
-			
-			if (r.Entry.Key == sc)
-			{
-				if (r.Remap == default)
-				{
-					Console.WriteLine("Repeat default");
-					return false;
-				}
-				
-				var remapKey = r.Remap.Key;
-				
-				if (Helper.IsMouseButton(remapKey))
-				{
-					Console.WriteLine("Repeat suppressed (mouse button)");
-					return true;
-				}
-				
-				Console.WriteLine($"Repeat: {r.Entry.Mods:b8}_0x{sc:X} -> {r.Remap.Mods:b8}_0x{remapKey:X} ({_vMods:b8})");
-				
-				if (sc == remapKey) return false;
-				SendKeyDown(remapKey);
-				return true;
-			}
-			
-			if (isMod && (r.Entry.Mods & modBit) != 0)
-			{
-				Console.WriteLine($"Suppress entry mod: 0x{sc:X}");
-				return true;
-			}
-			
-			// TODO: implement compositional hotkeys (for mod-to-mod)?
-			return false;
+			return HandleRemapRepeat(r, sc, isMod, modBit);
 		}
 		
 		if (_currUnicode is {} u)
 		{
 			Debug.Assert(_currAction is null);
-			
-			if (u.Entry.Key == sc)
-			{
-				Console.WriteLine("Repeat Unicode");
-				SendInput((uint)u.Inputs.Length, ref MemoryMarshal.GetReference(u.Inputs), INPUT.Size);
-				return true;
-			}
-			
-			if (isMod && (u.Entry.Mods & modBit) != 0)
-			{
-				Console.WriteLine($"Suppress entry mod: 0x{sc:X}");
-				return true;
-			}
-			
-			return false;
+			return HandleUnicodeRepeat(u, sc, isMod, modBit);
 		}
 		
 		if (_currAction is {} a)
@@ -242,7 +197,6 @@ public static class InputHook
 		}
 		
 		var entry = new Entry(_vMods, sc);
-		
 		if (!_hotkeys.TryGetValue(entry, out var func)) return false;
 		
 		var hotkey = func();
@@ -369,11 +323,86 @@ public static class InputHook
 		return false;
 	}
 	
+	private static bool HandleRemapRepeat(RemapItem r, ushort sc, bool isMod, byte modBit)
+	{
+		if (r.Entry.Key == sc)
+		{
+			if (r.Remap == default)
+			{
+				Console.WriteLine("Repeat default");
+				return false;
+			}
+			
+			var remapKey = r.Remap.Key;
+			
+			if (Helper.IsMouseButton(remapKey))
+			{
+				Console.WriteLine("Repeat suppressed (mouse button)");
+				return true;
+			}
+			
+			Console.WriteLine($"Repeat: {r.Entry.Mods:b8}_0x{sc:X} -> {r.Remap.Mods:b8}_0x{remapKey:X} ({_vMods:b8})");
+			
+			if (sc == remapKey) return false;
+			SendKeyDown(remapKey);
+			return true;
+		}
+		
+		if (isMod && (r.Entry.Mods & modBit) != 0)
+		{
+			Console.WriteLine($"Suppress entry mod: 0x{sc:X}");
+			return true;
+		}
+		
+		if (IsMod(r.Remap.Key)) return false; // maybe support compositional hotkeys, someday
+
+		var entry = new Entry((byte)((_vMods & ~r.Remap.Mods) | r.Entry.Mods), sc);
+		if (!_hotkeys.TryGetValue(entry, out var func)) return false;
+
+		Console.WriteLine("Remap interrupt");
+		
+		_currRemap = null;
+		_suppressedKeys.Add(r.Entry.Key);
+
+		if (r.Remap == default)
+		{
+			SendKeyUp(r.Entry.Key);
+			goto MapHotkey;
+		}
+
+		var keyToRelease  = r.Remap.Key;
+		var modsToRelease = (byte)(r.Remap.Mods & ~r.Entry.Mods);
+		var modsToRestore = (byte)(r.Entry.Mods & ~r.Remap.Mods);
+
+		_vMods = (byte)((_vMods & ~modsToRelease) | modsToRestore);
+
+		bool mask = ShouldMask(modsToRestore);
+		var isWheel = Helper.IsMouseWheel(keyToRelease);
+		var size = BitOperations.PopCount((byte)(modsToRelease | modsToRestore)) + (mask ? 2 : 0) + (isWheel ? 0 : 1);
+
+		if (size != 0)
+		{
+			var ks = new KeySender(stackalloc INPUT[size]);
+			if (!isWheel) ks.KeyUp(keyToRelease);
+			if (modsToRelease != 0) ks.ModsUp(modsToRelease);
+			if (modsToRestore != 0) ks.ModsDown(modsToRestore, mask);
+			ks.Send();
+		}
+
+		MapHotkey:
+		var hotkey = func();
+		
+		if (hotkey.IsRemap) return HandleRemapDown(entry, hotkey.Remap);
+		if (hotkey.IsUnicode) return HandleUnicodeDown(entry, hotkey.Unicode);
+		Debug.Assert(hotkey.IsAction); return HandleActionDown(entry, hotkey.Action);
+	}
+	
 	private static bool HandleUnicodeDown(Entry entry, string? str)
 	{
 		if (str is null)
 		{
 			_suppressedKeys.Add(entry.Key);
+			Console.WriteLine($"Suppress: 0x{entry.Key:X}");
 			return true;
 		}
 		
@@ -441,6 +470,46 @@ public static class InputHook
 		return true;
 	}
 	
+	private static bool HandleUnicodeRepeat(UnicodeItem u, ushort sc, bool isMod, byte modBit)
+	{
+		if (u.Entry.Key == sc)
+		{
+			Console.WriteLine("Repeat Unicode");
+			SendInput((uint)u.Inputs.Length, ref MemoryMarshal.GetReference(u.Inputs), INPUT.Size);
+			return true;
+		}
+		
+		if (isMod && (u.Entry.Mods & modBit) != 0)
+		{
+			Console.WriteLine($"Suppress entry mod: 0x{sc:X}");
+			return true;
+		}
+		
+		var entry = new Entry((byte)(_vMods | u.Entry.Mods), sc);
+		if (!_hotkeys.TryGetValue(entry, out var func)) return false;
+
+		Console.WriteLine("Unicode interrupt");
+
+		var modsToRestore = u.Entry.Mods;
+
+		_currUnicode = null;
+		_vMods |= modsToRestore;
+		_suppressedKeys.Add(u.Entry.Key);
+
+		if (modsToRestore != 0)
+		{
+			var mask = ShouldMask(modsToRestore);
+			var size = BitOperations.PopCount(modsToRestore) + (mask ? 2 : 0);
+			new KeySender(stackalloc INPUT[size]).ModsDown(modsToRestore, mask).Send();
+		}
+
+		var hotkey = func();
+		
+		if (hotkey.IsRemap) return HandleRemapDown(entry, hotkey.Remap);
+		if (hotkey.IsUnicode) return HandleUnicodeDown(entry, hotkey.Unicode);
+		Debug.Assert(hotkey.IsAction); return HandleActionDown(entry, hotkey.Action);
+	}
+	
 	private static bool HandleActionDown(Entry entry, Action<KeyEvent> action)
 	{
 		var keyEvent = new KeyEvent();
@@ -499,9 +568,13 @@ public static class InputHook
 	
 	private static bool IsMod(ushort sc, out byte modBit) => (modBit = ModBit(sc)) != 0;
 	
+	private static bool IsMod(ushort sc) => ModBit(sc) != 0;
+	
 	private static bool ShouldMask(byte mods) => (mods & (Mod.LAW | Mod.RAW)) != 0 && (mods & (Mod.LC | Mod.RC)) == 0;
 	
 	private static void SendKeyDown(ushort sc) => SendKey(sc, true);
+	
+	private static void SendKeyUp(ushort sc) => SendKey(sc, false);
 	
 	private static void SendKey(ushort key, bool down)
 	{
