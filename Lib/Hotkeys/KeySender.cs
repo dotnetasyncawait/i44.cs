@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Lib.Hotkeys.Constants;
 using Lib.Interop;
@@ -11,7 +12,7 @@ namespace Lib.Hotkeys;
 internal ref struct KeySender(Span<INPUT> inputs)
 {
 	private readonly Span<INPUT> _inputs = inputs;
-	private int _index = 0;
+	private int _index;
 	
 	internal KeySender ModsDown(byte modBits, bool mask = false) => AddMods(modBits, true, mask);
 	internal KeySender ModsUp(byte modBits, bool mask = false) => AddMods(modBits, false, mask);
@@ -19,11 +20,27 @@ internal ref struct KeySender(Span<INPUT> inputs)
 	internal KeySender KeyDown(ushort sc) => AddKey(sc, true);
 	internal KeySender KeyUp(ushort sc) => AddKey(sc, false);
 	
+	internal KeySender TapKey(ushort sc, int count)
+	{
+		Debug.Assert(_inputs.Length >= count * 2);
+		
+		var down = Helper.IsMouseKey(sc) ? INPUT.MouseKey(sc, true) : INPUT.KeybdKey(sc, true);
+		var up = Helper.IsMouseKey(sc) ? INPUT.MouseKey(sc, false) : INPUT.KeybdKey(sc, false);
+		
+		for (int i = 0; i < count; i++)
+		{
+			_inputs[_index++] = down;
+			_inputs[_index++] = up;
+		}
+		
+		return this;
+	}
+	
 	internal void Send()
 	{
 		if (_index > 0)
 		{
-			_ = User32.SendInput((uint)_inputs.Length, ref MemoryMarshal.GetReference(_inputs), INPUT.Size);
+			_ = User32.SendInput((uint)_index, ref MemoryMarshal.GetReference(_inputs), INPUT.Size);
 		}
 	}
 	

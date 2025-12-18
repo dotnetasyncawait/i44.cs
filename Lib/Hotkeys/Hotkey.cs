@@ -14,8 +14,8 @@ internal readonly record struct Hotkey
 	internal string? Unicode { get; }
 	internal Action<KeyEvent>? Action { get; }
 	
-	public static Hotkey Default = new((Remap)default);
-	public static Hotkey Suppress = new((string?)null);
+	public static readonly Hotkey Default = new((Remap)default);
+	public static readonly Hotkey Suppress = new((string?)null);
 	
 	internal Hotkey(Remap remap) => 
 		(IsRemap, Remap, IsUnicode, Unicode, IsAction, Action) = (true, remap, false, null, false, null);
