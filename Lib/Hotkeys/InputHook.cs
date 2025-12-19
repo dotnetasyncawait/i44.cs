@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Lib.Hotkeys.Constants;
 using Lib.Interop;
+using Lib.Shared.Collections;
 using static Lib.Hotkeys.Constants.Misc;
 using static Lib.Interop.User32;
 using static Lib.Interop.Constants;
@@ -26,6 +27,9 @@ public static class InputHook
 {
 	private static readonly Dictionary<Entry, Func<Hotkey>> _hotkeys = [];
 	
+	private static readonly HotstringTrie _hotstrings = new();
+	private static readonly Deque<char> _inputBuffer = new(HotstringMaxBufferSize);
+	
 	private static readonly Thread _hotkeyThread = new(StartHook);
 	private static uint _hotkeyThreadId;
 	
@@ -39,11 +43,9 @@ public static class InputHook
 	
 	public static void Start()
 	{
-		if (_hotkeys.Count == 0)
-		{
-			MapHotkeys();
-			_hotkeyThread.Start();
-		}
+		MapHotkeys();
+		MapHotstrings();
+		_hotkeyThread.Start();
 	}
 	
 	public static void Exit()
@@ -97,6 +99,29 @@ public static class InputHook
 			foreach (var attribute in method.GetCustomAttributes<HotkeyAttribute>())
 			{
 				_hotkeys.Add(attribute.Entry, handler);
+			}
+		}
+	}
+	
+	private static void MapHotstrings()
+	{
+		var methods = Assembly.GetEntryAssembly()!
+			.GetTypes()
+			.SelectMany(t => t.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic))
+			.Where(m => m.CustomAttributes.Any(a => a.AttributeType == typeof(HotstringAttribute)));
+		
+		foreach (var method in methods)
+		{
+			if (method.ReturnType != typeof(Hotstring) || method.GetParameters().Length != 0)
+			{
+				throw new NotImplementedException("Invalid function signature");
+			}
+			
+			var func = method.CreateDelegate<Func<Hotstring>>();
+			
+			foreach (var attribute in method.GetCustomAttributes<HotstringAttribute>())
+			{
+				_hotstrings.Add(attribute.Entry, func);
 			}
 		}
 	}
@@ -198,7 +223,10 @@ public static class InputHook
 		}
 		
 		var entry = new Entry(_vMods, sc);
-		if (!_hotkeys.TryGetValue(entry, out var func)) return false;
+		if (!_hotkeys.TryGetValue(entry, out var func))
+		{
+			return !isMod && HandleHotstring(sc); // TODO: clear buffer in other places
+		}
 		
 		var hotkey = func();
 		
@@ -410,22 +438,7 @@ public static class InputHook
 		var length = str.Length * 2;
 		var inputs = ArrayPool<INPUT>.Shared.Rent(length);
 		
-		for (int i = 0, j = 0; i < str.Length; i++)
-		{
-			var high = (ushort)str[i];
-			if (high < 0xD800)
-			{
-				inputs[j++] = INPUT.KeybdInput(high, KEYEVENTF_UNICODE, MAGNUM_CALLNEXT);
-				inputs[j++] = INPUT.KeybdInput(high, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, MAGNUM_CALLNEXT);
-				continue;
-			}
-			
-			var low = (ushort)str[++i];
-			inputs[j++] = INPUT.KeybdInput(high, KEYEVENTF_UNICODE, MAGNUM_CALLNEXT);
-			inputs[j++] = INPUT.KeybdInput(low,  KEYEVENTF_UNICODE, MAGNUM_CALLNEXT);
-			inputs[j++] = INPUT.KeybdInput(high, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, MAGNUM_CALLNEXT);
-			inputs[j++] = INPUT.KeybdInput(low,  KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, MAGNUM_CALLNEXT);
-		}
+		FillUnicodeChars(str, inputs);
 		
 		_vMods = 0;
 		_currUnicode = new UnicodeItem(entry, length, inputs);
@@ -538,6 +551,155 @@ public static class InputHook
 		}, new KeyValuePair<Action<KeyEvent>, KeyEvent>(action, keyEvent), false);
 		
 		return true;
+	}
+	
+	private static bool HandleHotstring(ushort sc)
+	{
+		if (sc == Key.Space) // end-key
+		{
+			if (_inputBuffer.IsEmpty || (_vMods & (Mod.LCAW | Mod.RCAW)) != 0)
+			{
+				return false;
+			}
+			
+			if (!_hotstrings.TryFind(_inputBuffer, out var entry, out var func))
+			{
+				_inputBuffer.AddLast(' ', FullMode.DropOldest);
+				return false;
+			}
+			
+			_inputBuffer.Clear();
+			
+			var hotstring = func();
+			var replacement = hotstring.Replacement;
+			
+			if (replacement == "")
+			{
+				if (!hotstring.DeleteTyped) // Hotstring.Skip
+				{
+					Console.WriteLine("Skip hotstring");
+					return false;
+				}
+				
+				// Hotstring.Erase
+				new KeySender(stackalloc INPUT[entry.Length * 2]).TapKey(Key.Backspace, entry.Length).Send();
+				return true; // TODO: what about the Space Up event?
+			}
+			
+			Console.WriteLine($"Hotstring: '{entry}' -> '{replacement}'");
+			
+			switch (hotstring.Mode)
+			{
+			case Hotstring.SendMode.Default:
+				throw new NotImplementedException();
+			
+			case Hotstring.SendMode.Text:
+				var length = replacement.Length * 2;
+				if (hotstring.DeleteTyped)
+				{
+					length += entry.Length * 2;
+				}
+				
+				var inputs = ArrayPool<INPUT>.Shared.Rent(length);
+				Span<INPUT> inputsSpan = inputs;
+				
+				if (hotstring.DeleteTyped)
+				{
+					var down = INPUT.KeybdKey(Key.Backspace, true);
+					var up = INPUT.KeybdKey(Key.Backspace, false);
+					
+					for (int i = 0; i < entry.Length * 2; i+=2)
+					{
+						inputsSpan[i] = down;
+						inputsSpan[i+1] = up;
+					}
+					
+					inputsSpan = inputsSpan[(entry.Length * 2)..];
+				}
+				
+				FillUnicodeChars(replacement, inputsSpan);
+				SendInput((uint)length, ref MemoryMarshal.GetReference(inputs), INPUT.Size);
+				ArrayPool<INPUT>.Shared.Return(inputs);
+				
+				if (hotstring.OmitEndChar) return true; // TODO: what about the Space Up event?
+				break;
+
+			case Hotstring.SendMode.Clipboard:
+				throw new NotImplementedException();
+			
+			default: throw new UnreachableException();
+			}
+			
+			return false;
+		}
+		
+		if (!Helper.TryGetKeyInfo(sc, out var key)) return false;
+		
+		switch (key.Type)
+		{
+		case KeyType.Letter:
+		case KeyType.Symbol:
+		case KeyType.Number:
+			if ((_vMods & (Mod.LCAW | Mod.RCAW)) == 0)
+			{
+				_inputBuffer.AddLast((_vMods & (Mod.LS | Mod.RS)) != 0 ? key.Upper : key.Lower, FullMode.DropOldest);
+			}
+			break;
+		
+		case KeyType.Keypad:
+			throw new NotImplementedException("KeyType.Keypad");
+		
+		case KeyType.Navigation:
+			if (_inputBuffer.IsEmpty) break;
+			
+			if (sc is Key.Backspace)
+			{
+				if ((_vMods & ~(Mod.LC | Mod.RC)) == 0 && (_vMods & (Mod.LC | Mod.RC)) != 0)
+				{
+					_inputBuffer.Clear();
+				}
+				else
+				{
+					_inputBuffer.RemoveLast();
+				}
+				break;
+			}
+			
+			if (sc is not (Key.Insert or Key.Delete))
+			{
+				_inputBuffer.Clear();
+			}
+			
+			break;
+		
+		case KeyType.Function: break;
+		
+		default: throw new UnreachableException();
+		}
+		
+		return false;
+	}
+	
+	private static void FillUnicodeChars(ReadOnlySpan<char> text, Span<INPUT> inputs)
+	{
+		Debug.Assert(inputs.Length >= text.Length * 2);
+		
+		for (int i = 0, j = 0; i < text.Length; i++)
+		{
+			var high = (ushort)text[i];
+			if (high < 0xD800)
+			{
+				inputs[j++] = INPUT.KeybdInput(high, KEYEVENTF_UNICODE, MAGNUM_CALLNEXT);
+				inputs[j++] = INPUT.KeybdInput(high, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, MAGNUM_CALLNEXT);
+				continue;
+			}
+			
+			var low = (ushort)text[++i];
+			inputs[j++] = INPUT.KeybdInput(high, KEYEVENTF_UNICODE, MAGNUM_CALLNEXT);
+			inputs[j++] = INPUT.KeybdInput(low,  KEYEVENTF_UNICODE, MAGNUM_CALLNEXT);
+			inputs[j++] = INPUT.KeybdInput(high, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, MAGNUM_CALLNEXT);
+			inputs[j++] = INPUT.KeybdInput(low,  KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, MAGNUM_CALLNEXT);
+		}
 	}
 	
 	private static void AddKeysToIgnoreList(byte modBits, ushort key)
