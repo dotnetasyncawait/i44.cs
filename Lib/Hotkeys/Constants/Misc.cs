@@ -5,6 +5,7 @@
 internal static class Misc
 {
 	internal const int NonZero = 1;
+	internal const int HotstringMaxBufferSize = 32;
 	
 	internal const nuint MAGNUM_CALLNEXT = 0xAABBCCDD;
 	
