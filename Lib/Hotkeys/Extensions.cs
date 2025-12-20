@@ -13,7 +13,9 @@ internal static class Extensions
 	{
 		internal static INPUT MouseKey(ushort key, bool down)
 		{
-			(uint flags, uint data) = key switch
+			Debug.Assert(Helper.IsMouseKey(key));
+			
+			(uint flags, uint data) = (key & 0x02FF) switch
 			{
 				Key.LButton  => (MOUSEEVENTF_LEFTDOWN, 0u),
 				Key.RButton  => (MOUSEEVENTF_RIGHTDOWN, 0u),
@@ -21,10 +23,10 @@ internal static class Extensions
 				Key.XButton1 => (MOUSEEVENTF_XDOWN, XBUTTON1),
 				Key.XButton2 => (MOUSEEVENTF_XDOWN, XBUTTON2),
 				
-				Key.WheelUp    => (MOUSEEVENTF_WHEEL,  (uint)WHEEL_DELTA),
-				Key.WheelDown  => (MOUSEEVENTF_WHEEL,  unchecked((uint)-WHEEL_DELTA)),
-				Key.WheelLeft  => (MOUSEEVENTF_HWHEEL, unchecked((uint)-WHEEL_DELTA)),
-				Key.WheelRight => (MOUSEEVENTF_HWHEEL, (uint)WHEEL_DELTA),
+				Key.WheelUp    => (MOUSEEVENTF_WHEEL,  (uint)(WHEEL_DELTA * GetMultiplier(key))),
+				Key.WheelDown  => (MOUSEEVENTF_WHEEL,  unchecked((uint)-(WHEEL_DELTA * GetMultiplier(key)))),
+				Key.WheelLeft  => (MOUSEEVENTF_HWHEEL, unchecked((uint)-(WHEEL_DELTA * GetMultiplier(key)))),
+				Key.WheelRight => (MOUSEEVENTF_HWHEEL, (uint)(WHEEL_DELTA * GetMultiplier(key))),
 				
 				_ => throw new Exception($"Invalid mouse key 0x{key:X}")
 			};
@@ -36,10 +38,14 @@ internal static class Extensions
 			}
 			
 			return INPUT.MouseInput(data, flags, MAGNUM_CALLNEXT);
+			
+			static int GetMultiplier(ushort wheel) => ((wheel & 0xF000) >> 12) + 1;
 		}
 
 		internal static INPUT KeybdKey(ushort key, bool down)
 		{
+			Debug.Assert(!Helper.IsMouseKey(key));
+				
 			var flags = KEYEVENTF_SCANCODE | (Helper.IsExtendedKey(key) ? KEYEVENTF_EXTENDEDKEY : 0) | (down ? 0 : KEYEVENTF_KEYUP);
 			return INPUT.KeybdInput(key, (uint)flags, MAGNUM_CALLNEXT);
 		}

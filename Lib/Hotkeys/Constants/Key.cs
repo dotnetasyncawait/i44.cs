@@ -14,7 +14,75 @@ public static class Key
 	public const ushort WheelLeft  = 0x0207;
 	public const ushort WheelRight = 0x0208;
 	
-	#endregion
+	#region Wheel Multipliers
+	
+	public const ushort WheelUpX2  = WheelUp | 0x1000;
+	public const ushort WheelUpX3  = WheelUp | 0x2000;
+	public const ushort WheelUpX4  = WheelUp | 0x3000;
+	public const ushort WheelUpX5  = WheelUp | 0x4000;
+	public const ushort WheelUpX6  = WheelUp | 0x5000;
+	public const ushort WheelUpX7  = WheelUp | 0x6000;
+	public const ushort WheelUpX8  = WheelUp | 0x7000;
+	public const ushort WheelUpX9  = WheelUp | 0x8000;
+	public const ushort WheelUpX10 = WheelUp | 0x9000;
+	public const ushort WheelUpX11 = WheelUp | 0xA000;
+	public const ushort WheelUpX12 = WheelUp | 0xB000;
+	public const ushort WheelUpX13 = WheelUp | 0xC000;
+	public const ushort WheelUpX14 = WheelUp | 0xD000;
+	public const ushort WheelUpX15 = WheelUp | 0xE000;
+	public const ushort WheelUpX16 = WheelUp | 0xF000;
+	
+	public const ushort WheelDownX2  = WheelDown | 0x1000;
+	public const ushort WheelDownX3  = WheelDown | 0x2000;
+	public const ushort WheelDownX4  = WheelDown | 0x3000;
+	public const ushort WheelDownX5  = WheelDown | 0x4000;
+	public const ushort WheelDownX6  = WheelDown | 0x5000;
+	public const ushort WheelDownX7  = WheelDown | 0x6000;
+	public const ushort WheelDownX8  = WheelDown | 0x7000;
+	public const ushort WheelDownX9  = WheelDown | 0x8000;
+	public const ushort WheelDownX10 = WheelDown | 0x9000;
+	public const ushort WheelDownX11 = WheelDown | 0xA000;
+	public const ushort WheelDownX12 = WheelDown | 0xB000;
+	public const ushort WheelDownX13 = WheelDown | 0xC000;
+	public const ushort WheelDownX14 = WheelDown | 0xD000;
+	public const ushort WheelDownX15 = WheelDown | 0xE000;
+	public const ushort WheelDownX16 = WheelDown | 0xF000;
+	
+	public const ushort WheelLeftX2  = WheelLeft | 0x1000;
+	public const ushort WheelLeftX3  = WheelLeft | 0x2000;
+	public const ushort WheelLeftX4  = WheelLeft | 0x3000;
+	public const ushort WheelLeftX5  = WheelLeft | 0x4000;
+	public const ushort WheelLeftX6  = WheelLeft | 0x5000;
+	public const ushort WheelLeftX7  = WheelLeft | 0x6000;
+	public const ushort WheelLeftX8  = WheelLeft | 0x7000;
+	public const ushort WheelLeftX9  = WheelLeft | 0x8000;
+	public const ushort WheelLeftX10 = WheelLeft | 0x9000;
+	public const ushort WheelLeftX11 = WheelLeft | 0xA000;
+	public const ushort WheelLeftX12 = WheelLeft | 0xB000;
+	public const ushort WheelLeftX13 = WheelLeft | 0xC000;
+	public const ushort WheelLeftX14 = WheelLeft | 0xD000;
+	public const ushort WheelLeftX15 = WheelLeft | 0xE000;
+	public const ushort WheelLeftX16 = WheelLeft | 0xF000;
+	
+	public const ushort WheelRightX2  = WheelRight | 0x1000;
+	public const ushort WheelRightX3  = WheelRight | 0x2000;
+	public const ushort WheelRightX4  = WheelRight | 0x3000;
+	public const ushort WheelRightX5  = WheelRight | 0x4000;
+	public const ushort WheelRightX6  = WheelRight | 0x5000;
+	public const ushort WheelRightX7  = WheelRight | 0x6000;
+	public const ushort WheelRightX8  = WheelRight | 0x7000;
+	public const ushort WheelRightX9  = WheelRight | 0x8000;
+	public const ushort WheelRightX10 = WheelRight | 0x9000;
+	public const ushort WheelRightX11 = WheelRight | 0xA000;
+	public const ushort WheelRightX12 = WheelRight | 0xB000;
+	public const ushort WheelRightX13 = WheelRight | 0xC000;
+	public const ushort WheelRightX14 = WheelRight | 0xD000;
+	public const ushort WheelRightX15 = WheelRight | 0xE000;
+	public const ushort WheelRightX16 = WheelRight | 0xF000;
+	
+	#endregion // Wheel Multipliers
+	
+	#endregion // Mouse Keys
 	
 	#region Letters
 	
