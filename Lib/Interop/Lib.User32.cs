@@ -12,6 +12,10 @@ internal static partial class User32
 	[LibraryImport(Lib, SetLastError = true, EntryPoint = "SetWindowsHookExW")]
 	internal static unsafe partial HHook SetWindowsHookEx(
 		int idHook, delegate* unmanaged<int, UIntPtr, KBDLLHOOKSTRUCT*, IntPtr> lpfn, IntPtr hmod, uint dwThreadId);
+	
+	[LibraryImport(Lib, SetLastError = true, EntryPoint = "SetWindowsHookExW")]
+	internal static unsafe partial HHook SetWindowsHookEx(
+		int idHook, delegate* unmanaged<int, UIntPtr, MSLLHOOKSTRUCT*, IntPtr> lpfn, IntPtr hmod, uint dwThreadId);
 
 	[LibraryImport(Lib, SetLastError = true)]
 	[return: MarshalAs(UnmanagedType.Bool)]
@@ -19,6 +23,9 @@ internal static partial class User32
 	
 	[LibraryImport(Lib)]
 	internal static unsafe partial IntPtr CallNextHookEx(IntPtr hhk, int nCode, UIntPtr wParam, KBDLLHOOKSTRUCT* lParam);
+	
+	[LibraryImport(Lib)]
+	internal static unsafe partial IntPtr CallNextHookEx(IntPtr hhk, int nCode, UIntPtr wParam, MSLLHOOKSTRUCT* lParam);
 	
 	[LibraryImport(Lib, SetLastError = true, EntryPoint = "GetMessageW")]
 	internal static partial int GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);

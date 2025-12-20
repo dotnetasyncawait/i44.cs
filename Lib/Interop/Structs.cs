@@ -18,6 +18,16 @@ internal static class Structs
 	}
 	
 	[StructLayout(LayoutKind.Sequential)]
+	internal struct MSLLHOOKSTRUCT
+	{
+		internal POINT pt;
+		internal uint  mouseData;
+		internal uint  flags;
+		internal uint  time;
+		internal nuint dwExtraInfo;
+	}
+	
+	[StructLayout(LayoutKind.Sequential)]
 	internal struct MSG
 	{
 		internal nint  hwnd;
