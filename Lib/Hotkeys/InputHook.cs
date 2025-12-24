@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Lib.Hotkeys.Constants;
 using Lib.Interop;
+using Lib.Shared;
 using Lib.Shared.Collections;
 using static Lib.Hotkeys.Constants.Misc;
 using static Lib.Interop.User32;
@@ -30,8 +31,8 @@ public static class InputHook
 	private static readonly HotstringTrie _hotstrings = new();
 	private static readonly Deque<char> _inputBuffer = new(HotstringMaxBufferSize);
 	
-	private static readonly Thread _hotkeyThread = new(StartHook);
-	private static uint _hotkeyThreadId;
+	private static readonly Thread _hookThread = new(StartHook);
+	private static uint _hookThreadId;
 	
 	private static byte _vMods;
 	
@@ -41,29 +42,31 @@ public static class InputHook
 	private static UnicodeItem? _currUnicode;
 	private static ActionItem? _currAction;
 	
-	public static void Start()
+	internal static void Start()
 	{
+		SendKeyUp(Key.LCtrl); // TODO: remove once implement uiAccess
+		
 		MapHotkeys();
 		MapHotstrings();
-		_hotkeyThread.Start();
+		_hookThread.Start();
 	}
 	
-	public static void Exit()
+	internal static void ExitWait()
 	{
-		if (!PostThreadMessage(_hotkeyThreadId, WM_QUIT, 0, 0))
+		if (!PostThreadMessage(_hookThreadId, WM_QUIT, 0, 0))
 		{
 			throw new Exception(Marshal.GetLastPInvokeErrorMessage());
 		}
+		_hookThread.Join();
 	}
-	
-	public static void Wait() => _hotkeyThread.Join();
 	
 	private static unsafe void StartHook()
 	{
 		// TODO: If Hotkey.Exit() is called before we happen to initialize this field, PostThreadMessage will fail.
-		_hotkeyThreadId = Kernel32.GetCurrentThreadId();
+		_hookThreadId = Kernel32.GetCurrentThreadId();
 		
 		using var hHook = SetWindowsHookEx(WH_KEYBOARD_LL, &LowLevelKeyboardProc, 0, 0);
+		Debug.WriteLineEx("Hook is set");
 		
 		int res;
 		while((res = GetMessage(out var msg, IntPtr.Zero, 0, 0)) != 0)
@@ -76,8 +79,7 @@ public static class InputHook
 			_ = DispatchMessage(ref msg);
 		}
 		
-		Console.WriteLine("Message queue is terminated");
-		// TODO: call OnExit callbacks? 
+		Debug.WriteLineEx("Message queue is terminated");
 	}
 	
 	private static void MapHotkeys()
@@ -129,7 +131,7 @@ public static class InputHook
 	[UnmanagedCallersOnly]
 	// The reason for using 'raw pointer' for 'lParam' instead of `ref' is the:
 	// error CS8977: Cannot use 'ref', 'in', or 'out' in the signature of a method attributed with 'UnmanagedCallersOnly'.
-	internal static unsafe nint LowLevelKeyboardProc(int code, nuint wParam, KBDLLHOOKSTRUCT* lParam)
+	private static unsafe nint LowLevelKeyboardProc(int code, nuint wParam, KBDLLHOOKSTRUCT* lParam)
 	{
 		if (code < 0) goto CallNext;
 		
@@ -148,8 +150,17 @@ public static class InputHook
 			// Media keys are (for some reason) 'injected', and 'sc' is set to 0. So we fall back on Vk.
 			if (sc != 0 || hookStruct.vkCode is < VK_CONSUMER_BEGIN or > VK_CONSUMER_END)
 			{
-				Console.WriteLine($"Ignore injected: 0x{sc:X} (vk 0x{hookStruct.vkCode:X})");
-				return CallNextHookEx(0, code, wParam, lParam);
+				Debug.WriteLineEx($"Ignore injected: 0x{sc:X} (vk 0x{hookStruct.vkCode:X})");
+				
+				if ((flags & LLKHF_UP) != 0) // most likely JetBrains Rider tapping Alt on its release
+				{
+					// Apparently, only one app at a time is permitted to «steal» the keyboard focus. If any other app sends
+					// synthetic <key>Up event, they will take the precedence and all the subsequent calls to
+					// SetForegroundWindow will fail for us (until we repetitively send <key>Up event).
+					SendKeyUp(Key.LCtrl); // TODO: remove once implement uiAccess
+				}
+				
+				return NonZero;
 			}
 			
 			// It is said that if the scan code is an extended key, the high byte of the returned value will contain
@@ -165,7 +176,7 @@ public static class InputHook
 		bool isPressed = (flags & LLKHF_UP) == 0;
 		bool isMod = IsMod(sc, out byte modBit);
 		
-		Console.WriteLine($"{(isPressed ? "Down" : "Up")}: 0x{sc:X} ({_vMods:b8}); flags: {flags:b8}; extra: 0x{extra:X}");
+		Debug.WriteLineEx($"{(isPressed ? "Down" : "Up")}: 0x{sc:X} ({_vMods:b8}); flags: {flags:b8}");
 		
 		if (isPressed)
 		{
@@ -178,7 +189,7 @@ public static class InputHook
 			if (isMod) _vMods &= (byte)~modBit;
 		}
 		
-		Console.WriteLine($"Pass next: 0x{sc:X} ({_vMods:b8})");
+		Debug.WriteLineEx($"Pass next: 0x{sc:X} ({_vMods:b8})");
 		
 		CallNext:
 		return CallNextHookEx(0, code, wParam, lParam);
@@ -188,7 +199,7 @@ public static class InputHook
 	{
 		if (_suppressedKeys.Contains(sc))
 		{
-			Console.WriteLine($"Suppress key down: 0x{sc:X}");
+			Debug.WriteLineEx($"Suppress key down: 0x{sc:X}");
 			return true;
 		}
 		
@@ -209,13 +220,13 @@ public static class InputHook
 		{
 			if (a.Entry.Key == sc)
 			{
-				Console.WriteLine("Action still in progress");
+				Debug.WriteLineEx("Action still in progress");
 				return true;
 			}
 			
 			if (isMod && (a.Entry.Mods & modBit) != 0)
 			{
-				Console.WriteLine($"Suppress entry mod: 0x{sc:X}");
+				Debug.WriteLineEx($"Suppress entry mod: {modBit:b8} (0x{sc:X})");
 				return true;
 			}
 			
@@ -239,7 +250,7 @@ public static class InputHook
 	{
 		if (_suppressedKeys.Remove(sc))
 		{
-			Console.WriteLine($"Suppress key up: 0x{sc:X}");
+			Debug.WriteLineEx($"Suppress key up: 0x{sc:X}");
 			return true;
 		}
 		
@@ -277,7 +288,7 @@ public static class InputHook
 		
 		_vMods = (byte)(remap.Mods | remapKeyModBit);
 		
-		Console.WriteLine($"Remap: {entry.Mods:b8}_0x{entry.Key:X} -> {remap.Mods:b8}_0x{remap.Key:X} ({_vMods:b8})");
+		Debug.WriteLineEx($"Remap: {entry.Mods:b8}_0x{entry.Key:X} -> {remap.Mods:b8}_0x{remap.Key:X} ({_vMods:b8})");
 		
 		bool mask = ShouldMask(modsToRelease);
 		var size = BitOperations.PopCount((byte)(modsToPress | modsToRelease)) + (mask ? 2 : 0) + 1;
@@ -356,21 +367,17 @@ public static class InputHook
 	{
 		if (r.Entry.Key == sc)
 		{
-			if (r.Remap == default)
-			{
-				Console.WriteLine("Repeat default");
-				return false;
-			}
+			if (r.Remap == default) return false;
 			
 			var remapKey = r.Remap.Key;
 			
 			if (Helper.IsMouseButton(remapKey))
 			{
-				Console.WriteLine("Repeat suppressed (mouse button)");
+				Debug.WriteLineEx("Repeat suppressed (mouse button)");
 				return true;
 			}
 			
-			Console.WriteLine($"Repeat: {r.Entry.Mods:b8}_0x{sc:X} -> {r.Remap.Mods:b8}_0x{remapKey:X} ({_vMods:b8})");
+			Debug.WriteLineEx($"Repeat: {r.Entry.Mods:b8}_0x{sc:X} -> {r.Remap.Mods:b8}_0x{remapKey:X} ({_vMods:b8})");
 			
 			if (sc == remapKey) return false;
 			SendKeyDown(remapKey);
@@ -379,7 +386,7 @@ public static class InputHook
 		
 		if (isMod && (r.Entry.Mods & modBit) != 0)
 		{
-			Console.WriteLine($"Suppress entry mod: 0x{sc:X}");
+			Debug.WriteLineEx($"Suppress entry mod: {modBit:b8} (0x{sc:X})");
 			return true;
 		}
 		
@@ -388,7 +395,7 @@ public static class InputHook
 		var entry = new Entry((byte)((_vMods & ~r.Remap.Mods) | r.Entry.Mods), sc);
 		if (!_hotkeys.TryGetValue(entry, out var func)) return false;
 
-		Console.WriteLine("Remap interrupt");
+		Debug.WriteLineEx("Remap interrupt");
 		
 		_currRemap = null;
 		_suppressedKeys.Add(r.Entry.Key);
@@ -428,10 +435,10 @@ public static class InputHook
 	
 	private static bool HandleUnicodeDown(Entry entry, string? str)
 	{
-		if (str is null)
+		if (str is null) // Hotkey.Suppress
 		{
 			_suppressedKeys.Add(entry.Key);
-			Console.WriteLine($"Suppress: 0x{entry.Key:X}");
+			Debug.WriteLineEx($"Suppress: 0x{entry.Key:X}");
 			return true;
 		}
 		
@@ -443,7 +450,7 @@ public static class InputHook
 		_vMods = 0;
 		_currUnicode = new UnicodeItem(entry, length, inputs);
 		
-		Console.WriteLine($"Unicode: 0x{entry.Key:X} -> {str}");
+		Debug.WriteLineEx($"Unicode: 0x{entry.Key:X} -> '{str}'");
 		
 		var modsToRelease = entry.Mods;
 		if (modsToRelease != 0)
@@ -490,21 +497,21 @@ public static class InputHook
 	{
 		if (u.Entry.Key == sc)
 		{
-			Console.WriteLine("Repeat Unicode");
+			Debug.WriteLineEx("Repeat Unicode");
 			SendInput((uint)u.Length, ref MemoryMarshal.GetReference(u.Inputs), INPUT.Size);
 			return true;
 		}
 		
 		if (isMod && (u.Entry.Mods & modBit) != 0)
 		{
-			Console.WriteLine($"Suppress entry mod: 0x{sc:X}");
+			Debug.WriteLineEx($"Suppress entry mod: {modBit:b8} (0x{sc:X})");
 			return true;
 		}
 		
 		var entry = new Entry((byte)(_vMods | u.Entry.Mods), sc);
 		if (!_hotkeys.TryGetValue(entry, out var func)) return false;
 
-		Console.WriteLine("Unicode interrupt");
+		Debug.WriteLineEx("Unicode interrupt");
 
 		var modsToRestore = u.Entry.Mods;
 
@@ -531,7 +538,8 @@ public static class InputHook
 	{
 		var keyEvent = new KeyEvent();
 		_currAction = new ActionItem(entry, keyEvent);
-		Console.WriteLine("Action");
+		
+		Debug.WriteLineEx("Action");
 		
 		ThreadPool.QueueUserWorkItem(static x =>
 		{
@@ -577,16 +585,17 @@ public static class InputHook
 			{
 				if (!hotstring.DeleteTyped) // Hotstring.Skip
 				{
-					Console.WriteLine("Skip hotstring");
+					Debug.WriteLineEx("Skip hotstring");
 					return false;
 				}
 				
 				// Hotstring.Erase
+				Debug.WriteLineEx("Erase hotstring");
 				new KeySender(stackalloc INPUT[entry.Length * 2]).TapKey(Key.Backspace, entry.Length).Send();
 				return true; // TODO: what about the Space Up event?
 			}
 			
-			Console.WriteLine($"Hotstring: '{entry}' -> '{replacement}'");
+			Debug.WriteLineEx($"Hotstring: '{entry}' -> '{replacement}'");
 			
 			switch (hotstring.Mode)
 			{
