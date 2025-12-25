@@ -11,7 +11,7 @@ internal static class Extensions
 {
 	extension(INPUT)
 	{
-		internal static INPUT MouseKey(ushort key, bool down)
+		internal static INPUT MouseKey(ushort key, bool down, nuint extraInfo = MAGNUM_CALLNEXT)
 		{
 			Debug.Assert(Helper.IsMouseKey(key));
 			
@@ -37,17 +37,17 @@ internal static class Extensions
 				flags <<= 1; // MOUSEEVENTF_<key>UP
 			}
 			
-			return INPUT.MouseInput(data, flags, MAGNUM_CALLNEXT);
+			return INPUT.MouseInput(data, flags, extraInfo);
 			
 			static int GetMultiplier(ushort wheel) => ((wheel & 0xF000) >> 12) + 1;
 		}
 
-		internal static INPUT KeybdKey(ushort key, bool down)
+		internal static INPUT KeybdKey(ushort key, bool down, nuint extraInfo = MAGNUM_CALLNEXT)
 		{
 			Debug.Assert(!Helper.IsMouseKey(key));
 				
 			var flags = KEYEVENTF_SCANCODE | (Helper.IsExtendedKey(key) ? KEYEVENTF_EXTENDEDKEY : 0) | (down ? 0 : KEYEVENTF_KEYUP);
-			return INPUT.KeybdInput(key, (uint)flags, MAGNUM_CALLNEXT);
+			return INPUT.KeybdInput(key, (uint)flags, extraInfo);
 		}
 	}
 }

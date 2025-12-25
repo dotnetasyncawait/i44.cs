@@ -8,6 +8,7 @@ internal static class Misc
 	internal const int HotstringMaxBufferSize = 32;
 	
 	internal const nuint MAGNUM_CALLNEXT = 0xAABBCCDD;
+	internal const nuint MAGNUM_BLOCKKEY = 0xAABBCCDE;
 	
 	internal const ushort MenuMaskKey = Key.LCtrl;
 }

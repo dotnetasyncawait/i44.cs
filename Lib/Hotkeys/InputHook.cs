@@ -44,7 +44,7 @@ public static class InputHook
 	
 	internal static void Start()
 	{
-		SendKeyUp(Key.LCtrl); // TODO: remove once implement uiAccess
+		StealFocusWorkaround(); // TODO: remove once implement uiAccess
 		
 		MapHotkeys();
 		MapHotstrings();
@@ -138,7 +138,11 @@ public static class InputHook
 		var hookStruct = *lParam;
 		
 		var extra = hookStruct.dwExtraInfo;
-		if (extra == MAGNUM_CALLNEXT) goto CallNext;
+		switch (extra)
+		{
+			case MAGNUM_CALLNEXT: goto CallNext;
+			case MAGNUM_BLOCKKEY: return NonZero;
+		}
 		
 		var flags = hookStruct.flags;
 		var sc = (ushort)hookStruct.scanCode;
@@ -157,7 +161,7 @@ public static class InputHook
 					// Apparently, only one app at a time is permitted to «steal» the keyboard focus. If any other app sends
 					// synthetic <key>Up event, they will take the precedence and all the subsequent calls to
 					// SetForegroundWindow will fail for us (until we repetitively send <key>Up event).
-					SendKeyUp(Key.LCtrl); // TODO: remove once implement uiAccess
+					StealFocusWorkaround(); // TODO: remove once implement uiAccess
 				}
 				
 				return NonZero;
@@ -754,6 +758,12 @@ public static class InputHook
 	private static void SendKey(ushort key, bool down)
 	{
 		var input = Helper.IsMouseKey(key) ? INPUT.MouseKey(key, down) : INPUT.KeybdKey(key, down);
+		_ = SendInput(1, ref input, INPUT.Size);
+	}
+	
+	private static void StealFocusWorkaround()
+	{
+		var input = INPUT.KeybdKey(Key.LCtrl, false, MAGNUM_BLOCKKEY);
 		_ = SendInput(1, ref input, INPUT.Size);
 	}
 }
