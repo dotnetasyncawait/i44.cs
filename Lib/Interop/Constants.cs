@@ -36,17 +36,27 @@ public static class Constants
 	internal const ushort LLKHF_INJECTED = 0x10;
 	internal const ushort LLKHF_UP       = 0x80;
 	
-	internal const ushort WM_MOUSEMOVE   = 0x0200;
-	internal const ushort WM_LBUTTONDOWN = 0x0201;
-	internal const ushort WM_LBUTTONUP   = 0x0202;
-	internal const ushort WM_RBUTTONDOWN = 0x0204;
-	internal const ushort WM_RBUTTONUP   = 0x0205;
-	internal const ushort WM_MBUTTONDOWN = 0x0207;
-	internal const ushort WM_MBUTTONUP   = 0x0208;
-	internal const ushort WM_MOUSEWHEEL  = 0x020A;
-	internal const ushort WM_XBUTTONDOWN = 0x020B;
-	internal const ushort WM_XBUTTONUP   = 0x020C;
-	internal const ushort WM_MOUSEHWHEEL = 0x020E;
+	internal const ushort WM_MOUSEMOVE     = 0x0200;
+	internal const ushort WM_LBUTTONDOWN   = 0x0201;
+	internal const ushort WM_LBUTTONUP     = 0x0202;
+	internal const ushort WM_LBUTTONDBLCLK = 0x0203;
+	internal const ushort WM_RBUTTONDOWN   = 0x0204;
+	internal const ushort WM_RBUTTONUP     = 0x0205;
+	internal const ushort WM_MBUTTONDOWN   = 0x0207;
+	internal const ushort WM_MBUTTONUP     = 0x0208;
+	internal const ushort WM_MOUSEWHEEL    = 0x020A;
+	internal const ushort WM_XBUTTONDOWN   = 0x020B;
+	internal const ushort WM_XBUTTONUP     = 0x020C;
+	internal const ushort WM_MOUSEHWHEEL   = 0x020E;
+	
+	internal const int WM_USER = 0x0400;
+	
+	internal const uint IMAGE_BITMAP = 0;
+	internal const uint IMAGE_ICON   = 1;
+	internal const uint IMAGE_CURSOR = 2;
+	
+	internal const uint LR_LOADFROMFILE = 0x0010;
+	internal const uint LR_DEFAULTSIZE  = 0x0040;
 	
 	#endregion
 	
@@ -56,6 +66,21 @@ public static class Constants
 	internal const ushort XBUTTON2 = 0x0002;
 	
 	internal const short WHEEL_DELTA = 120;
+	
+	#endregion
+	
+	#region shellapi.h
+	
+	internal const uint NIM_ADD    = 0;
+	internal const uint NIM_MODIFY = 1;
+	internal const uint NIM_DELETE = 2;
+	
+	internal const uint NIF_MESSAGE = 0x01;
+	internal const uint NIF_ICON    = 0x02;
+	internal const uint NIF_TIP     = 0x04;
+	internal const uint NIF_STATE   = 0x08;
+	
+	internal const uint NIS_HIDDEN = 0x01;
 	
 	#endregion
 	

@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System;
+using System.Runtime.InteropServices;
 
 namespace Lib.Interop;
 
@@ -111,5 +112,34 @@ internal static class Structs
 		internal int y;
 	}
 
+	#endregion
+	
+	#region shellapi.h
+	
+	[StructLayout(LayoutKind.Sequential)]
+	internal unsafe struct NOTIFYICONDATAW
+	{
+		internal uint cbSize;
+		internal nint hWnd;
+		internal uint uID;
+		internal uint uFlags;
+		internal uint uCallbackMessage;
+		internal nint hIcon;
+		
+		// Technically, we could use the [MarshalAs(UnmanagedType.ByValTStr, SizeConst = <size>)] attribute for szTip, szInfo,
+		// and szInfoTitle, but the default marshaller of the P/Invoke source-generator does not support marshalling string
+		// fields.
+		internal fixed char szTip[128];
+		
+		internal uint dwState;
+		internal uint dwStateMask;
+		internal fixed char szInfo[256];
+		internal uint uVersion;
+		internal fixed char szInfoTitle[64];
+		internal uint dwInfoFlags;
+		internal Guid guidItem;
+		internal nint hBalloonIcon;
+	}
+	
 	#endregion
 }

@@ -46,5 +46,15 @@ internal static partial class User32
 	
 	[LibraryImport(Lib, EntryPoint = "MapVirtualKeyW")]
 	internal static partial uint MapVirtualKey(uint uCode, uint uMapType);
+	
+	[LibraryImport(Lib, SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+	private static partial nint LoadImageW(nint hInst, string name, uint type, int cx, int cy, uint fuLoad);
+	
+	internal static HImage LoadImage(nint hInst, string name, uint type, int cx, int cy, uint fuLoad)
+		=> new(LoadImageW(hInst, name, type, cx, cy, fuLoad), type);
+	
+	[LibraryImport(Lib, SetLastError = true)]
+	[return: MarshalAs(UnmanagedType.Bool)]
+	internal static partial bool DestroyIcon(nint hIcon);
 }
 
