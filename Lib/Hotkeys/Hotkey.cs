@@ -4,7 +4,7 @@ using Lib.Hotkeys.Constants;
 
 namespace Lib.Hotkeys;
 
-internal readonly record struct Hotkey
+public readonly struct Hotkey
 {
 	internal bool IsRemap { get; }
 	internal bool IsUnicode { get; }

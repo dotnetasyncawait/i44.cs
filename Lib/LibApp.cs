@@ -8,6 +8,8 @@ using Lib.Shared;
 
 namespace Lib;
 
+public readonly record struct HotkeyT(byte Mods, ushort Key);
+
 public static class LibApp
 {
 	private static readonly Application App;
@@ -21,12 +23,18 @@ public static class LibApp
 		App = new Application();
 		
 		MainWindow = new MainWindow();
+		MainWindow.InitTrayIcon();
 		
 		App.MainWindow = MainWindow;
 		App.ShutdownMode = ShutdownMode.OnMainWindowClose;
 		App.Exit += ExitHandler;
 	}
 
+	public static void AddHotkey((byte Mods, ushort Key) hotkey, Func<Hotkey> handler)
+	{
+		
+	}
+	
 	public static void Run()
 	{
 		Debug.WriteLineEx("Starting...");

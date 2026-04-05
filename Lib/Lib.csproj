@@ -6,5 +6,9 @@
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<UseWPF>true</UseWPF>
 	</PropertyGroup>
+	
+	<ItemGroup>
+		<InternalsVisibleTo Include="I44"/>
+	</ItemGroup>
 
 </Project>

@@ -164,7 +164,7 @@ public static class InputHook
 					StealFocusWorkaround(); // TODO: remove once implement uiAccess
 				}
 				
-				return NonZero;
+				goto CallNext; // TODO: rollback
 			}
 			
 			// It is said that if the scan code is an extended key, the high byte of the returned value will contain

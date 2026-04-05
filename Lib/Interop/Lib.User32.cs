@@ -9,6 +9,10 @@ internal static partial class User32
 {
 	private const string Lib = "User32.dll";
 	
+	[LibraryImport("User32")]
+	[return: MarshalAs(UnmanagedType.Bool)]
+	public static partial bool SetForegroundWindow(nint hWnd);
+	
 	[LibraryImport(Lib, SetLastError = true, EntryPoint = "SetWindowsHookExW")]
 	internal static unsafe partial HHook SetWindowsHookEx(
 		int idHook, delegate* unmanaged<int, UIntPtr, KBDLLHOOKSTRUCT*, IntPtr> lpfn, IntPtr hmod, uint dwThreadId);

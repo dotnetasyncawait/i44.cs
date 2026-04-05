@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using Lib.Interop;
 using Lib.Shared;
 
 namespace Lib;
@@ -17,6 +18,8 @@ internal sealed class MainWindow : Window
 	// Therefore, make sure that you manage the lifetime of your hook delegate.
 	private readonly HwndSourceHook _wndProc;
 	
+	private TrayIcon _icon = null!;
+	
 	internal nint Hwnd { get; }
 	
 	public MainWindow()
@@ -27,6 +30,23 @@ internal sealed class MainWindow : Window
 		_hwndSource = HwndSource.FromHwnd(Hwnd)!;
 		_hwndSource.AddHook(_wndProc = WndProc);
 	}
+	
+	internal void InitTrayIcon()
+	{
+		Debug.Assert(_icon is null);
+		
+		_icon = new TrayIcon(uint.MaxValue, Hwnd, Constants.WM_USER | 0xFF)
+			.Add(@"C:\Users\Stefano\Downloads\hashtag.ico", "LibApp") // TODO: move the icon and use relative path
+			.OnRightClick((_, _) =>
+			{
+				// TODO: create Menu (with: Suspend, Exit)
+			})
+			.OnDoubleClick((_, _) => LibApp.Exit()); // TODO: suspend
+		
+		SetIcon(IconState.Default);
+	}
+	
+	internal void SetIcon(IconState iconState) => _icon.Display((int)iconState);
 	
 	internal void OnMessage(int messageId, HwndSourceHook callback)
 	{
@@ -76,5 +96,11 @@ internal sealed class MainWindow : Window
 		}
 		
 		return 0;
+	}
+	
+	internal enum IconState
+	{
+		Default,
+		Suspended
 	}
 }

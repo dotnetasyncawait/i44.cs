@@ -20,7 +20,7 @@ internal ref struct KeySender(Span<INPUT> inputs)
 	internal KeySender KeyDown(ushort sc) => AddKey(sc, true);
 	internal KeySender KeyUp(ushort sc) => AddKey(sc, false);
 	
-	internal KeySender TapKey(ushort sc, int count)
+	internal KeySender TapKey(ushort sc, int count = 1)
 	{
 		Debug.Assert(_inputs.Length >= count * 2);
 		
@@ -41,6 +41,7 @@ internal ref struct KeySender(Span<INPUT> inputs)
 		if (_index > 0)
 		{
 			_ = User32.SendInput((uint)_index, ref MemoryMarshal.GetReference(_inputs), INPUT.Size);
+			_index = 0;
 		}
 	}
 	
